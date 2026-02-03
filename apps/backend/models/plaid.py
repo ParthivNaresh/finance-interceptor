@@ -24,8 +24,3 @@ class ExchangeTokenResponse(BaseModel):
         default="success",
         description="Status of the token exchange",
     )
-
-
-class HealthResponse(BaseModel):
-    status: Literal["healthy", "unhealthy"] = Field(description="API health status")
-    version: str = Field(description="API version")

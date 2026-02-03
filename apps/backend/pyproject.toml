@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.10.0",
     "pydantic-settings>=2.6.0",
     "certifi>=2024.0.0",
+    "supabase>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -37,27 +38,27 @@ exclude = [
 
 [tool.ruff.lint]
 select = [
-    "E",      # pycodestyle errors
-    "W",      # pycodestyle warnings
-    "F",      # pyflakes
-    "I",      # isort
-    "N",      # pep8-naming
-    "UP",     # pyupgrade
-    "B",      # flake8-bugbear
-    "C4",     # flake8-comprehensions
-    "SIM",    # flake8-simplify
-    "ARG",    # flake8-unused-arguments
-    "PTH",    # flake8-use-pathlib
-    "PL",     # pylint
-    "RUF",    # ruff-specific rules
+    "E",
+    "W",
+    "F",
+    "I",
+    "N",
+    "UP",
+    "B",
+    "C4",
+    "SIM",
+    "ARG",
+    "PTH",
+    "PL",
+    "RUF",
 ]
 ignore = [
-    "PLR0913",  # too many arguments (FastAPI endpoints often have many)
-    "PLR2004",  # magic value comparison
+    "PLR0913",
+    "PLR2004",
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["config", "models", "routers", "services"]
+known-first-party = ["config", "middleware", "models", "routers", "services"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -81,5 +82,5 @@ mypy_path = "."
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = "plaid.*"
+module = ["plaid.*", "supabase.*", "gotrue.*"]
 ignore_missing_imports = true

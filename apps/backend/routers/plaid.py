@@ -3,7 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from models import (
+from models.plaid import (
     ExchangeTokenRequest,
     ExchangeTokenResponse,
     LinkTokenResponse,

@@ -5,14 +5,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers import api_router
+from services.auth import AuthServiceContainer
+from services.database import DatabaseServiceContainer
 from services.plaid import PlaidServiceContainer
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    DatabaseServiceContainer.get()
+    AuthServiceContainer.get()
     PlaidServiceContainer.get()
     yield
     PlaidServiceContainer.reset()
+    AuthServiceContainer.reset()
+    DatabaseServiceContainer.reset()
 
 
 def create_app() -> FastAPI:
