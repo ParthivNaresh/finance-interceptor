@@ -1,12 +1,20 @@
 {
-  "name": "lifestyle-interceptor",
-  "module": "index.ts",
-  "type": "module",
+  "name": "finance-interceptor",
   "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "mobile": "bun run --cwd apps/mobile",
+    "mobile:start": "bun run --cwd apps/mobile start",
+    "mobile:ios": "bun run --cwd apps/mobile ios",
+    "mobile:android": "bun run --cwd apps/mobile android",
+    "mobile:lint": "bun run --cwd apps/mobile lint",
+    "mobile:lint:fix": "bun run --cwd apps/mobile lint:fix",
+    "mobile:typecheck": "bun run --cwd apps/mobile typecheck"
   },
-  "peerDependencies": {
-    "typescript": "^5"
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.2"
   }
 }

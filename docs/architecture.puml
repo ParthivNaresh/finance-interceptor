@@ -1,0 +1,130 @@
+@startuml Finance Interceptor Architecture
+
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title Finance Interceptor - Production Architecture
+
+actor "User" as user
+participant "Mobile App\n(React Native)" as mobile
+participant "API Gateway\n(FastAPI)" as api
+database "PostgreSQL" as db
+database "Redis" as redis
+participant "Vault\n(Secrets)" as vault
+participant "Task Queue\n(Celery/Temporal)" as queue
+participant "Plaid API" as plaid
+participant "Analysis Engine\n(Future: AI Agent)" as agent
+
+== User Authentication ==
+user -> mobile: Open app
+mobile -> api: POST /auth/login
+api -> db: Validate credentials
+api -> redis: Store session
+api --> mobile: JWT token
+
+== Initial Bank Connection ==
+user -> mobile: Tap "Connect Bank"
+mobile -> api: POST /api/plaid/link-token\n(with JWT)
+api -> api: Validate JWT
+api -> plaid: Create link token
+plaid --> api: link_token (4hr TTL)
+api --> mobile: link_token
+
+mobile -> plaid: Open Plaid Link UI
+user -> plaid: Select bank, authenticate
+plaid --> mobile: public_token (30min TTL)
+
+mobile -> api: POST /api/plaid/exchange-token\n{public_token}
+api -> plaid: Exchange public_token
+plaid --> api: access_token + item_id
+api -> vault: Store access_token\n(encrypted)
+vault --> api: token_reference
+api -> db: Store item record\n(token_ref, item_id, user_id)
+api -> queue: Queue initial sync job
+api --> mobile: Success + item_id
+
+== Initial Transaction Sync (Background) ==
+queue -> db: Get item record
+queue -> vault: Fetch access_token
+vault --> queue: access_token
+queue -> plaid: GET /accounts/get
+plaid --> queue: accounts[]
+queue -> db: Store accounts
+
+queue -> plaid: POST /transactions/sync\n(cursor: null)
+plaid --> queue: transactions[] + cursor
+queue -> db: Store transactions
+queue -> db: Store sync cursor
+queue -> agent: Analyze for recurring patterns
+agent -> db: Store recurring_transactions
+
+== Webhook: New Transactions Available ==
+plaid -> api: POST /api/plaid/webhook\n{SYNC_UPDATES_AVAILABLE}
+api -> api: Validate webhook signature
+api -> redis: Check idempotency key
+api -> db: Store webhook event\n(status: pending)
+api --> plaid: 200 OK (immediate)
+
+queue -> db: Poll pending webhooks
+queue -> vault: Fetch access_token
+queue -> plaid: POST /transactions/sync\n(cursor: stored_cursor)
+plaid --> queue: new_transactions[] + new_cursor
+queue -> db: Upsert transactions
+queue -> db: Update cursor
+queue -> agent: Analyze new transactions
+
+== Price Change Detection ==
+agent -> db: Load recurring_transactions
+agent -> agent: Compare new amount\nvs expected amount
+alt Price increased > 5%
+    agent -> db: Create price_change_alert
+    agent -> queue: Queue push notification
+    queue -> mobile: Push: "Netflix price\nincreased 29%"
+end
+
+== User Views Transactions ==
+user -> mobile: Open Transactions tab
+mobile -> api: GET /api/accounts/:id/transactions\n(with JWT)
+api -> api: Validate JWT, extract user_id
+api -> db: Query transactions\nWHERE account.user_id = ?
+api --> mobile: transactions[]
+
+== User Views Alerts ==
+user -> mobile: Open Alerts tab
+mobile -> api: GET /api/alerts
+api -> db: Query price_change_alerts\nWHERE user_id = ?
+api --> mobile: alerts[]
+
+user -> mobile: Dismiss alert
+mobile -> api: POST /api/alerts/:id/dismiss
+api -> db: Update alert status
+api --> mobile: Success
+
+== Scheduled Balance Refresh (Daily Cron) ==
+queue -> db: Get all active items
+loop For each item
+    queue -> vault: Fetch access_token
+    queue -> plaid: GET /accounts/balance/get
+    plaid --> queue: balances[]
+    queue -> db: Update account balances
+end
+
+== Re-authentication Required ==
+plaid -> api: POST /api/plaid/webhook\n{ITEM: LOGIN_REQUIRED}
+api -> db: Update item status\n= 'login_required'
+api -> queue: Queue notification
+queue -> mobile: Push: "Bank connection\nneeds attention"
+
+user -> mobile: Tap notification
+mobile -> api: POST /api/plaid/link-token\n(mode: update, item_id)
+api -> plaid: Create update link token
+plaid --> api: link_token
+api --> mobile: link_token
+mobile -> plaid: Open Plaid Link (update mode)
+user -> plaid: Re-authenticate
+plaid --> mobile: Success
+mobile -> api: Confirm re-auth
+api -> db: Update item status = 'active'
+
+@enduml
