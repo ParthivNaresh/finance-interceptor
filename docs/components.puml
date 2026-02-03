@@ -1,0 +1,98 @@
+@startuml Finance Interceptor Components
+
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+
+title Finance Interceptor - Component Architecture
+
+package "Client Layer" {
+    [Mobile App\n(React Native/Expo)] as mobile
+    [Push Notifications\n(Expo Push)] as push
+}
+
+package "API Layer" {
+    [FastAPI Gateway] as api
+    [Auth Middleware\n(JWT Validation)] as auth
+    [Rate Limiter] as ratelimit
+}
+
+package "Business Logic" {
+    [Plaid Service] as plaid_svc
+    [Transaction Service] as tx_svc
+    [Alert Service] as alert_svc
+    [Recurring Detection\nEngine] as recurring
+}
+
+package "Background Processing" {
+    [Task Queue\n(Celery/Temporal)] as queue
+    [Transaction Sync\nWorker] as sync_worker
+    [Analysis Worker] as analysis_worker
+    [Notification Worker] as notif_worker
+}
+
+package "Data Layer" {
+    database "PostgreSQL" as pg {
+        [users]
+        [plaid_items]
+        [accounts]
+        [transactions]
+        [recurring_transactions]
+        [alerts]
+        [webhook_events]
+    }
+    database "Redis" as redis {
+        [Rate Limits]
+        [Session Cache]
+        [Idempotency Keys]
+    }
+}
+
+package "Security Layer" {
+    [HashiCorp Vault\n(Secrets Manager)] as vault
+    [Encryption Service] as encrypt
+}
+
+package "External Services" {
+    cloud "Plaid API" as plaid
+    cloud "Auth Provider\n(Supabase/Auth0)" as auth_provider
+}
+
+mobile --> api : HTTPS
+api --> auth
+auth --> auth_provider : Validate JWT
+api --> ratelimit
+ratelimit --> redis
+
+api --> plaid_svc
+api --> tx_svc
+api --> alert_svc
+
+plaid_svc --> vault : Fetch tokens
+plaid_svc --> plaid : API calls
+plaid_svc --> pg : Store items
+
+tx_svc --> pg : CRUD transactions
+alert_svc --> pg : CRUD alerts
+
+plaid --> api : Webhooks
+
+api --> queue : Enqueue jobs
+queue --> sync_worker
+queue --> analysis_worker
+queue --> notif_worker
+
+sync_worker --> vault
+sync_worker --> plaid
+sync_worker --> pg
+
+analysis_worker --> recurring
+recurring --> pg
+recurring --> alert_svc
+
+notif_worker --> push
+push --> mobile
+
+vault --> encrypt
+
+@enduml

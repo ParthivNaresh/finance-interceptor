@@ -1,0 +1,90 @@
+@startuml Token Security Flow
+
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title Plaid Access Token Security Model
+
+actor User
+participant "Mobile App" as app
+participant "FastAPI" as api
+participant "PostgreSQL" as db
+participant "Vault" as vault
+participant "Plaid" as plaid
+
+== Token Storage (One-time after Link) ==
+
+app -> api: POST /exchange-token\n{public_token}
+api -> plaid: Exchange token
+plaid --> api: access_token, item_id
+
+note over api: Generate unique\ntoken_reference UUID
+
+api -> vault: PUT /secret/plaid/{token_ref}\n{access_token, item_id}
+vault -> vault: Encrypt with\nmaster key
+vault --> api: 200 OK
+
+api -> db: INSERT plaid_items\n(user_id, item_id,\ntoken_ref, status)
+
+note over db: Only stores reference\nNEVER the actual token
+
+api --> app: {item_id, status: "connected"}
+
+== Token Retrieval (Every API Call) ==
+
+api -> api: Receive request\nfor user's data
+
+api -> db: SELECT token_ref\nFROM plaid_items\nWHERE user_id = ?
+db --> api: token_ref
+
+api -> vault: GET /secret/plaid/{token_ref}
+vault -> vault: Decrypt
+vault --> api: access_token
+
+note over api: Token in memory\nonly for this request
+
+api -> plaid: API call with\naccess_token
+plaid --> api: Response
+
+note over api: Token discarded\nafter response
+
+api --> app: Processed data
+
+== Token Rotation (If Compromised) ==
+
+note over api: Security event detected\nor scheduled rotation
+
+api -> vault: GET current token
+vault --> api: old_access_token
+
+api -> plaid: POST /item/access_token/invalidate
+plaid --> api: new_access_token
+
+api -> vault: PUT /secret/plaid/{token_ref}\n{new_access_token}
+vault --> api: 200 OK
+
+note over db: No DB update needed\nsame token_ref
+
+== Token Deletion (User Disconnects) ==
+
+app -> api: DELETE /accounts/{item_id}
+
+api -> db: SELECT token_ref\nWHERE item_id = ?
+db --> api: token_ref
+
+api -> vault: GET token
+vault --> api: access_token
+
+api -> plaid: POST /item/remove
+plaid --> api: 200 OK
+
+api -> vault: DELETE /secret/plaid/{token_ref}
+vault --> api: 200 OK
+
+api -> db: DELETE FROM plaid_items\nWHERE item_id = ?
+api -> db: DELETE FROM accounts\nWHERE plaid_item_id = ?
+api -> db: DELETE FROM transactions\nWHERE account_id IN (...)
+
+api --> app: {status: "disconnected"}
+
+@enduml
