@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -20,7 +21,13 @@ class PlaidItemRepository(BaseRepository[PlaidItemResponse, PlaidItemCreate]):
             return None
         return dict(result.data[0])
 
-    def update_status(self, record_id: UUID, status: str, error_code: str | None = None, error_message: str | None = None) -> dict[str, Any] | None:
+    def update_status(
+        self,
+        record_id: UUID,
+        status: str,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any] | None:
         update_data: dict[str, Any] = {"status": status}
         if error_code is not None:
             update_data["error_code"] = error_code
@@ -28,6 +35,28 @@ class PlaidItemRepository(BaseRepository[PlaidItemResponse, PlaidItemCreate]):
             update_data["error_message"] = error_message
 
         result = self._get_table().update(update_data).eq("id", str(record_id)).execute()
+        if not result.data:
+            return None
+        return dict(result.data[0])
+
+    def update_sync_cursor(self, record_id: UUID, cursor: str) -> dict[str, Any] | None:
+        result = (
+            self._get_table()
+            .update({"sync_cursor": cursor})
+            .eq("id", str(record_id))
+            .execute()
+        )
+        if not result.data:
+            return None
+        return dict(result.data[0])
+
+    def update_last_sync(self, record_id: UUID) -> dict[str, Any] | None:
+        result = (
+            self._get_table()
+            .update({"last_successful_sync": datetime.now(timezone.utc).isoformat()})
+            .eq("id", str(record_id))
+            .execute()
+        )
         if not result.data:
             return None
         return dict(result.data[0])

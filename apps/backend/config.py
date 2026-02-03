@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     plaid_client_id: str
     plaid_secret: str
     plaid_environment: PlaidEnvironment = "sandbox"
+    plaid_webhook_secret: str = Field(
+        default="",
+        description="Secret for verifying Plaid webhook signatures (not needed for sandbox)",
+    )
+    plaid_webhook_url: str = Field(
+        default="",
+        description="URL where Plaid sends webhooks (e.g., ngrok URL for local dev)",
+    )
 
     supabase_url: str = Field(description="Supabase project URL")
     supabase_anon_key: str = Field(description="Supabase anonymous/public key")

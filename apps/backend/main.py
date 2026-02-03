@@ -6,11 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from repositories.account import AccountRepositoryContainer
 from repositories.plaid_item import PlaidItemRepositoryContainer
+from repositories.transaction import TransactionRepositoryContainer
+from repositories.webhook_event import WebhookEventRepositoryContainer
 from routers import api_router
 from services.auth import AuthServiceContainer
 from services.database import DatabaseServiceContainer
 from services.encryption import EncryptionServiceContainer
 from services.plaid import PlaidServiceContainer
+from services.transaction_sync import TransactionSyncServiceContainer
+from services.webhook import WebhookServiceContainer
 
 
 @asynccontextmanager
@@ -21,7 +25,15 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     PlaidServiceContainer.get()
     PlaidItemRepositoryContainer.get()
     AccountRepositoryContainer.get()
+    TransactionRepositoryContainer.get()
+    WebhookEventRepositoryContainer.get()
+    TransactionSyncServiceContainer.get()
+    WebhookServiceContainer.get()
     yield
+    WebhookServiceContainer.reset()
+    TransactionSyncServiceContainer.reset()
+    WebhookEventRepositoryContainer.reset()
+    TransactionRepositoryContainer.reset()
     AccountRepositoryContainer.reset()
     PlaidItemRepositoryContainer.reset()
     PlaidServiceContainer.reset()

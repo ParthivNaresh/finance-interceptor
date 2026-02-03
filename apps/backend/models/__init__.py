@@ -9,6 +9,23 @@ from models.plaid import (
     PlaidItemCreate,
     PlaidItemResponse,
 )
+from models.transaction import (
+    PlaidTransactionData,
+    TransactionCreate,
+    TransactionResponse,
+    TransactionSyncResult,
+    TransactionUpdate,
+)
+from models.webhook import (
+    ItemWebhookCode,
+    PlaidWebhookRequest,
+    TransactionsWebhookCode,
+    WebhookAcknowledgeResponse,
+    WebhookEventCreate,
+    WebhookEventResponse,
+    WebhookEventStatus,
+    WebhookType,
+)
 
 __all__ = [
     "AccountCreate",
@@ -17,7 +34,20 @@ __all__ = [
     "ExchangeTokenRequest",
     "ExchangeTokenResponse",
     "HealthResponse",
+    "ItemWebhookCode",
     "LinkTokenResponse",
     "PlaidItemCreate",
     "PlaidItemResponse",
+    "PlaidTransactionData",
+    "PlaidWebhookRequest",
+    "TransactionCreate",
+    "TransactionResponse",
+    "TransactionSyncResult",
+    "TransactionUpdate",
+    "TransactionsWebhookCode",
+    "WebhookAcknowledgeResponse",
+    "WebhookEventCreate",
+    "WebhookEventResponse",
+    "WebhookEventStatus",
+    "WebhookType",
 ]
