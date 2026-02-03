@@ -1,6 +1,6 @@
 # Finance Interceptor - Development Roadmap
 
-## Current Status: Phase 1 In Progress 🚧
+## Current Status: Phase 1 Complete ✅
 - ✅ Plaid Link integration working
 - ✅ Public token → access token exchange working
 - ✅ Basic FastAPI backend structure
@@ -9,27 +9,27 @@
 - ✅ Backend auth middleware implemented
 - ✅ Mobile auth integration complete
 - ✅ Full auth flow tested
-- 🚧 Secrets management (Supabase Vault)
+- ✅ Secrets management (encrypted token storage)
 
 ---
 
-## Phase 1: Foundation (Database + Auth)
+## Phase 1: Foundation (Database + Auth) ✅
 
-### 1.1 Database Setup
-- [x] Set up Supabase project (Postgres + Auth + Vault)
+### 1.1 Database Setup ✅
+- [x] Set up Supabase project (Postgres + Auth)
 - [x] Create database schema (see schema.sql)
 - [x] Configure Row Level Security (RLS) policies
 - [x] Enable pgvector extension for future merchant matching
 - [x] Set up connection pooling (Supabase handles this)
 
-### 1.2 Backend Auth Infrastructure
+### 1.2 Backend Auth Infrastructure ✅
 - [x] Create DatabaseService (Supabase client wrapper)
 - [x] Add Supabase config to Settings
 - [x] Create AuthService (token validation via Supabase)
 - [x] Create auth middleware (get_current_user, get_optional_user)
 - [x] Reorganize models into directory structure
 
-### 1.3 User Authentication (Mobile)
+### 1.3 User Authentication (Mobile) ✅
 - [x] Install Supabase JS client
 - [x] Create Supabase service module
 - [x] Create AuthContext provider
@@ -41,22 +41,21 @@
 - [x] Refactor styles into features/ directory
 - [x] Test full auth flow
 
-### 1.4 Secrets Management (Supabase Vault)
-- [ ] Enable Supabase Vault extension
-- [ ] Create VaultService for secret storage/retrieval
-- [ ] Create PlaidItemRepository for plaid_items CRUD
-- [ ] Create AccountRepository for accounts CRUD
-- [ ] Update PlaidService to fetch accounts after connection
-- [ ] Update exchange-token endpoint to:
+### 1.4 Secrets Management ✅
+- [x] Create EncryptionService for token encryption
+- [x] Create PlaidItemRepository for plaid_items CRUD
+- [x] Create AccountRepository for accounts CRUD
+- [x] Update PlaidService to fetch accounts after connection
+- [x] Update exchange-token endpoint to:
   - Require authentication
-  - Store access_token in Vault
-  - Create plaid_items record with token reference
+  - Encrypt and store access_token
+  - Create plaid_items record
   - Fetch and store accounts from Plaid
   - Return connected accounts to mobile
-- [ ] Update mobile to handle new response format
-- [ ] Test full connection flow with data persistence
+- [x] Update mobile to display connected accounts
+- [x] Test full connection flow with data persistence
 
-**Deliverable:** Users can sign up, log in, and connect bank accounts with tokens stored securely in Supabase Vault.
+**Deliverable:** Users can sign up, log in, and connect bank accounts with tokens stored securely. ✅
 
 ---
 
@@ -237,9 +236,9 @@ See `docs/schema.sql` for complete schema.
 
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
-| Database | Supabase (Postgres) | Managed, includes Auth + Vault + Realtime |
+| Database | Supabase (Postgres) | Managed, includes Auth + Realtime |
 | Auth | Supabase Auth | Integrated with DB, JWT-based |
-| Secrets | Supabase Vault | Built-in, no key management, audit trail |
+| Secrets | Application-level encryption | Fernet (AES) via cryptography library |
 | Task Queue | Temporal | Best for long-running agentic workflows |
 | Cache | Redis (Upstash) | Rate limiting, idempotency keys |
 | Push | Expo Push | Native to our mobile stack |
@@ -252,7 +251,7 @@ See `docs/schema.sql` for complete schema.
 | Milestone | Target | Status |
 |-----------|--------|--------|
 | POC - Plaid Auth | ✅ | Complete |
-| Phase 1 - Foundation | | In Progress |
+| Phase 1 - Foundation | ✅ | Complete |
 | Phase 2 - Data Sync | | Not Started |
 | Phase 3 - Core Features | | Not Started |
 | Phase 4 - Recurring Detection | | Not Started |

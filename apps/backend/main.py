@@ -4,9 +4,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from repositories.account import AccountRepositoryContainer
+from repositories.plaid_item import PlaidItemRepositoryContainer
 from routers import api_router
 from services.auth import AuthServiceContainer
 from services.database import DatabaseServiceContainer
+from services.encryption import EncryptionServiceContainer
 from services.plaid import PlaidServiceContainer
 
 
@@ -14,9 +17,15 @@ from services.plaid import PlaidServiceContainer
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     DatabaseServiceContainer.get()
     AuthServiceContainer.get()
+    EncryptionServiceContainer.get()
     PlaidServiceContainer.get()
+    PlaidItemRepositoryContainer.get()
+    AccountRepositoryContainer.get()
     yield
+    AccountRepositoryContainer.reset()
+    PlaidItemRepositoryContainer.reset()
     PlaidServiceContainer.reset()
+    EncryptionServiceContainer.reset()
     AuthServiceContainer.reset()
     DatabaseServiceContainer.reset()
 

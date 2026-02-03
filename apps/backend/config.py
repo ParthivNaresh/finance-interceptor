@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     supabase_anon_key: str = Field(description="Supabase anonymous/public key")
     supabase_service_role_key: str = Field(description="Supabase service role key (backend only)")
 
+    encryption_key: str = Field(
+        description="Key for encrypting sensitive data like Plaid access tokens"
+    )
+
     app_name: str = "Finance Interceptor"
     debug: bool = True
 

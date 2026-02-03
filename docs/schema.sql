@@ -1,10 +1,6 @@
 -- Finance Interceptor Database Schema
 -- PostgreSQL with Supabase extensions
--- 
--- Run this in Supabase SQL Editor or psql
--- No migrations needed during development - drop and recreate as needed
 
--- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "vector";
@@ -30,7 +26,7 @@ CREATE TABLE public.plaid_items (
     institution_id TEXT,
     institution_name TEXT,
     institution_logo TEXT,
-    access_token_ref UUID NOT NULL,
+    encrypted_access_token TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',
     error_code TEXT,
     error_message TEXT,
@@ -67,7 +63,7 @@ CREATE INDEX idx_accounts_plaid_item_id ON public.accounts(plaid_item_id);
 CREATE INDEX idx_accounts_type ON public.accounts(type);
 
 -- ============================================================================
--- MERCHANT NORMALIZATION (must be before transactions)
+-- MERCHANT NORMALIZATION
 -- ============================================================================
 
 CREATE TABLE public.merchants (
@@ -109,7 +105,7 @@ CREATE TABLE public.merchant_embeddings (
 CREATE INDEX idx_merchant_embeddings_merchant_id ON public.merchant_embeddings(merchant_id);
 
 -- ============================================================================
--- TRANSACTIONS (after merchants)
+-- TRANSACTIONS
 -- ============================================================================
 
 CREATE TABLE public.transactions (
@@ -482,10 +478,6 @@ CREATE TRIGGER update_notification_preferences_updated_at BEFORE UPDATE ON publi
 
 CREATE TRIGGER update_push_tokens_updated_at BEFORE UPDATE ON public.push_tokens
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- ============================================================================
--- FUNCTION: Create user profile on signup
--- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$

@@ -1,14 +1,23 @@
-from typing import ClassVar
+from decimal import Decimal
+from typing import Any, ClassVar
 
 import plaid
 from plaid.api import plaid_api
+from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.country_code import CountryCode
+from plaid.model.item_get_request import ItemGetRequest
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.products import Products
 
 from config import Settings, get_settings
+
+
+class PlaidServiceError(Exception):
+    def __init__(self, message: str = "Plaid operation failed") -> None:
+        self.message = message
+        super().__init__(self.message)
 
 
 class PlaidService:
@@ -62,6 +71,37 @@ class PlaidService:
             "access_token": response.access_token,
             "item_id": response.item_id,
         }
+
+    def get_item(self, access_token: str) -> dict[str, Any]:
+        request = ItemGetRequest(access_token=access_token)
+        response = self._client.item_get(request)
+        item = response.item
+        return {
+            "item_id": item.item_id,
+            "institution_id": item.institution_id,
+            "consent_expiration_time": item.consent_expiration_time,
+        }
+
+    def get_accounts(self, access_token: str) -> list[dict[str, Any]]:
+        request = AccountsGetRequest(access_token=access_token)
+        response = self._client.accounts_get(request)
+
+        accounts = []
+        for account in response.accounts:
+            balances = account.balances
+            accounts.append({
+                "account_id": account.account_id,
+                "name": account.name,
+                "official_name": account.official_name,
+                "type": account.type.value if account.type else None,
+                "subtype": account.subtype.value if account.subtype else None,
+                "mask": account.mask,
+                "current_balance": Decimal(str(balances.current)) if balances.current is not None else None,
+                "available_balance": Decimal(str(balances.available)) if balances.available is not None else None,
+                "iso_currency_code": balances.iso_currency_code or "USD",
+            })
+
+        return accounts
 
 
 class PlaidServiceContainer:
