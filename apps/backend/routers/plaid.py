@@ -71,8 +71,59 @@ async def exchange_public_token(
         access_token = exchange_result["access_token"]
         item_id = exchange_result["item_id"]
 
-        item_info = plaid_service.get_item(access_token)
+        existing_item = plaid_item_repo.get_by_item_id(item_id)
 
+        if existing_item:
+            if existing_item["user_id"] != str(current_user.id):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This bank account is already connected to another user",
+                )
+
+            plaid_item_id = UUID(existing_item["id"])
+
+            encrypted_token = encryption_service.encrypt(access_token)
+            plaid_item_repo.update_access_token(plaid_item_id, encrypted_token)
+            plaid_item_repo.update_status(plaid_item_id, "active")
+
+            plaid_accounts = plaid_service.get_accounts(access_token)
+            _sync_accounts(account_repo, plaid_item_id, plaid_accounts)
+
+            updated_accounts = account_repo.get_by_plaid_item_id(plaid_item_id)
+            account_responses = [
+                AccountResponse(
+                    id=UUID(acc["id"]),
+                    account_id=acc["account_id"],
+                    name=acc["name"],
+                    official_name=acc.get("official_name"),
+                    type=acc["type"],
+                    subtype=acc.get("subtype"),
+                    mask=acc.get("mask"),
+                    current_balance=acc.get("current_balance"),
+                    available_balance=acc.get("available_balance"),
+                    iso_currency_code=acc.get("iso_currency_code", "USD"),
+                )
+                for acc in updated_accounts
+            ]
+
+            item_info = plaid_service.get_item(access_token)
+
+            plaid_item_response = PlaidItemResponse(
+                id=plaid_item_id,
+                item_id=item_id,
+                institution_id=item_info.get("institution_id"),
+                institution_name=existing_item.get("institution_name"),
+                status="active",
+                accounts=account_responses,
+            )
+
+            return ExchangeTokenResponse(
+                item_id=item_id,
+                plaid_item=plaid_item_response,
+                status="success",
+            )
+
+        item_info = plaid_service.get_item(access_token)
         encrypted_token = encryption_service.encrypt(access_token)
 
         plaid_item_data = PlaidItemCreate(
@@ -135,8 +186,54 @@ async def exchange_public_token(
             status="success",
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         ) from e
+
+
+def _sync_accounts(
+    account_repo: AccountRepository,
+    plaid_item_id: UUID,
+    plaid_accounts: list[dict],
+) -> None:
+    existing_accounts = account_repo.get_by_plaid_item_id(plaid_item_id)
+    existing_account_ids = {acc["account_id"] for acc in existing_accounts}
+    plaid_account_ids = {acc["account_id"] for acc in plaid_accounts}
+
+    accounts_to_create = [
+        AccountCreate(
+            plaid_item_id=plaid_item_id,
+            account_id=acc["account_id"],
+            name=acc["name"],
+            official_name=acc["official_name"],
+            type=acc["type"],
+            subtype=acc["subtype"],
+            mask=acc["mask"],
+            current_balance=acc["current_balance"],
+            available_balance=acc["available_balance"],
+            iso_currency_code=acc["iso_currency_code"],
+        )
+        for acc in plaid_accounts
+        if acc["account_id"] not in existing_account_ids
+    ]
+
+    if accounts_to_create:
+        account_repo.create_many(accounts_to_create)
+
+    for acc in plaid_accounts:
+        if acc["account_id"] in existing_account_ids:
+            existing = next(e for e in existing_accounts if e["account_id"] == acc["account_id"])
+            account_repo.update_balance(
+                UUID(existing["id"]),
+                acc["current_balance"],
+                acc["available_balance"],
+            )
+
+    accounts_to_deactivate = existing_account_ids - plaid_account_ids
+    for existing in existing_accounts:
+        if existing["account_id"] in accounts_to_deactivate:
+            account_repo.deactivate(UUID(existing["id"]))

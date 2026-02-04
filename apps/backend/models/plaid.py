@@ -42,6 +42,24 @@ class PlaidItemResponse(BaseModel):
     accounts: list[AccountResponse] = Field(default_factory=list, description="Connected accounts")
 
 
+class PlaidItemWithAccountsResponse(BaseModel):
+    id: UUID
+    item_id: str
+    institution_id: str | None = None
+    institution_name: str | None = None
+    status: str
+    error_code: str | None = None
+    error_message: str | None = None
+    last_successful_sync: datetime | None = None
+    accounts: list[AccountResponse] = Field(default_factory=list)
+
+
+class AccountsListResponse(BaseModel):
+    plaid_items: list[PlaidItemWithAccountsResponse]
+    total_balance: Decimal = Field(description="Sum of all account balances")
+    account_count: int = Field(description="Total number of accounts")
+
+
 class ExchangeTokenResponse(BaseModel):
     item_id: str = Field(description="Plaid item ID")
     plaid_item: PlaidItemResponse = Field(description="Created plaid item with accounts")
@@ -70,3 +88,11 @@ class AccountCreate(BaseModel):
     current_balance: Decimal | None = None
     available_balance: Decimal | None = None
     iso_currency_code: str = "USD"
+
+
+class SyncResponse(BaseModel):
+    success: bool
+    transactions_added: int
+    transactions_modified: int
+    transactions_removed: int
+    message: str

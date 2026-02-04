@@ -20,6 +20,15 @@ class AccountRepository(BaseRepository[AccountResponse, AccountCreate]):
             return None
         return dict(result.data[0])
 
+    def get_by_user_id(self, user_id: UUID) -> list[dict[str, Any]]:
+        result = (
+            self._get_table()
+            .select("*, plaid_items!inner(user_id)")
+            .eq("plaid_items.user_id", str(user_id))
+            .execute()
+        )
+        return [dict(item) for item in result.data] if result.data else []
+
     def create_many(self, accounts: list[AccountCreate]) -> list[dict[str, Any]]:
         if not accounts:
             return []
@@ -30,6 +39,37 @@ class AccountRepository(BaseRepository[AccountResponse, AccountCreate]):
     def delete_by_plaid_item_id(self, plaid_item_id: UUID) -> int:
         result = self._get_table().delete().eq("plaid_item_id", str(plaid_item_id)).execute()
         return len(result.data) if result.data else 0
+
+    def update_balance(
+        self,
+        account_id: UUID,
+        current_balance: float | None,
+        available_balance: float | None,
+    ) -> dict[str, Any] | None:
+        update_data: dict[str, Any] = {}
+        if current_balance is not None:
+            update_data["current_balance"] = current_balance
+        if available_balance is not None:
+            update_data["available_balance"] = available_balance
+
+        if not update_data:
+            return self.get_by_id(account_id)
+
+        result = self._get_table().update(update_data).eq("id", str(account_id)).execute()
+        if not result.data:
+            return None
+        return dict(result.data[0])
+
+    def deactivate(self, account_id: UUID) -> dict[str, Any] | None:
+        result = (
+            self._get_table()
+            .update({"is_active": False})
+            .eq("id", str(account_id))
+            .execute()
+        )
+        if not result.data:
+            return None
+        return dict(result.data[0])
 
 
 class AccountRepositoryContainer:

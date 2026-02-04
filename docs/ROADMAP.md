@@ -1,9 +1,10 @@
 # Finance Interceptor - Development Roadmap
 
-## Current Status: Phase 2 Complete ✅
+## Current Status: Phase 3 Complete ✅
 - ✅ Phase 1 Complete (Auth + Secrets Management)
 - ✅ Phase 2 Complete (Webhooks + Transaction Sync)
-- 🚧 Phase 3: Core Features
+- ✅ Phase 3 Complete (Core Features)
+- 🚧 Phase 4: Recurring Detection Engine
 
 ---
 
@@ -21,60 +22,56 @@
 ## Phase 2: Data Sync Infrastructure ✅
 
 ### 2.1 Plaid Webhook Integration ✅
-- [x] Create webhook models (Pydantic)
-- [x] Create WebhookEventRepository
-- [x] Create WebhookService (signature verification, routing)
-- [x] Create webhook router
-- [x] Configure webhook URL in link token creation
-- [x] Test with ngrok + Plaid sandbox
-
 ### 2.2 Transaction Sync ✅
-- [x] Create transaction models
-- [x] Create TransactionRepository
-- [x] Add sync_transactions method to PlaidService
-- [x] Create TransactionSyncService
-- [x] Update PlaidItemRepository with sync cursor methods
-- [x] Update WebhookService to trigger sync
-- [x] Test transaction sync (48 transactions synced!)
-
-### 2.3 Task Queue Setup (Temporal) - Deferred
-- [ ] Set up Temporal server (for production async processing)
 
 **Deliverable:** Transactions sync automatically via webhooks. ✅
 
 ---
 
-## Phase 3: Core Features
+## Phase 3: Core Features ✅
 
-### 3.1 Account Management API
-- [ ] GET /api/accounts - List user's connected accounts
-- [ ] GET /api/accounts/:id - Get account details
-- [ ] DELETE /api/accounts/:id - Disconnect account
-- [ ] POST /api/accounts/:id/sync - Force manual sync
+### 3.1 Account Management API ✅
+- [x] GET /api/accounts - List user's connected accounts
+- [x] GET /api/accounts/:id - Get account details
+- [x] POST /api/accounts/:id/sync - Force manual sync
+- [x] DELETE /api/accounts/plaid-items/:id - Disconnect a plaid item
 
-### 3.2 Transaction API
-- [ ] GET /api/transactions - List transactions (paginated, filtered)
-- [ ] GET /api/transactions/:id - Get transaction details
-- [ ] Implement date range filtering
-- [ ] Implement category filtering
-- [ ] Implement search by merchant name
+### 3.2 Transaction API ✅
+- [x] GET /api/transactions - List transactions (paginated, filtered)
+- [x] GET /api/transactions/:id - Get transaction details
+- [x] Implement date range filtering
+- [x] Implement category filtering
+- [x] Implement search by merchant name
 
-### 3.3 Mobile App - Account Views
-- [ ] Account list screen
-- [ ] Account detail screen with balance
-- [ ] Transaction list screen
-- [ ] Transaction detail screen
-- [ ] Pull-to-refresh functionality
+### 3.3 Mobile App - Account Views ✅
+- [x] Account list screen with total balance
+- [x] Account cards grouped by institution
+- [x] Transaction list screen with infinite scroll
+- [x] Transaction detail screen
+- [x] Pull-to-refresh functionality
+- [x] Loading and empty states
 
-**Deliverable:** Users can view all their accounts and transactions in the app.
+**Deliverable:** Users can view all their accounts and transactions in the app. ✅
 
 ---
 
 ## Phase 4: Recurring Detection Engine
 
 ### 4.1 Merchant Normalization
+- [ ] Implement basic normalization rules
+- [ ] Use Plaid's merchant_name and personal_finance_category
+- [ ] Build canonical merchant lookup service
+
 ### 4.2 Recurring Transaction Detection
+- [ ] Implement frequency detection algorithm
+- [ ] Detect subscription patterns from transaction history
+- [ ] Create recurring_transactions records
+- [ ] Track expected amounts and dates
+
 ### 4.3 Price Change Detection
+- [ ] Compare new transactions to expected recurring amounts
+- [ ] Calculate percentage change
+- [ ] Create alerts when threshold exceeded
 
 **Deliverable:** System automatically detects subscriptions and price changes.
 
@@ -102,8 +99,8 @@
 | POC - Plaid Auth | ✅ Complete |
 | Phase 1 - Foundation | ✅ Complete |
 | Phase 2 - Data Sync | ✅ Complete |
-| Phase 3 - Core Features | 🚧 Next |
-| Phase 4 - Recurring Detection | Not Started |
+| Phase 3 - Core Features | ✅ Complete |
+| Phase 4 - Recurring Detection | 🚧 Next |
 | Phase 5 - Alerts | Not Started |
 | Phase 6 - Agentic | Not Started |
 | Phase 7 - Production | Not Started |

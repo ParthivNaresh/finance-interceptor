@@ -60,13 +60,49 @@ class TransactionResponse(BaseModel):
     iso_currency_code: str
     date: date_type
     name: str
-    merchant_name: str | None
+    merchant_name: str | None = None
     pending: bool
-    category: list[str] | None
-    personal_finance_category_primary: str | None
-    personal_finance_category_detailed: str | None
+    payment_channel: str | None = None
+    category: list[str] | None = None
+    personal_finance_category_primary: str | None = None
+    personal_finance_category_detailed: str | None = None
+    logo_url: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class TransactionDetailResponse(BaseModel):
+    id: UUID
+    account_id: UUID
+    transaction_id: str
+    amount: Decimal
+    iso_currency_code: str
+    date: date_type
+    authorized_date: date_type | None = None
+    name: str
+    merchant_name: str | None = None
+    pending: bool
+    payment_channel: str | None = None
+    category: list[str] | None = None
+    personal_finance_category_primary: str | None = None
+    personal_finance_category_detailed: str | None = None
+    location_address: str | None = None
+    location_city: str | None = None
+    location_region: str | None = None
+    location_postal_code: str | None = None
+    location_country: str | None = None
+    logo_url: str | None = None
+    website: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TransactionsListResponse(BaseModel):
+    transactions: list[TransactionResponse]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
 
 
 class TransactionSyncResult(BaseModel):

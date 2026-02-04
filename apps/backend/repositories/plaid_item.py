@@ -33,8 +33,22 @@ class PlaidItemRepository(BaseRepository[PlaidItemResponse, PlaidItemCreate]):
             update_data["error_code"] = error_code
         if error_message is not None:
             update_data["error_message"] = error_message
+        if status == "active":
+            update_data["error_code"] = None
+            update_data["error_message"] = None
 
         result = self._get_table().update(update_data).eq("id", str(record_id)).execute()
+        if not result.data:
+            return None
+        return dict(result.data[0])
+
+    def update_access_token(self, record_id: UUID, encrypted_token: str) -> dict[str, Any] | None:
+        result = (
+            self._get_table()
+            .update({"encrypted_access_token": encrypted_token})
+            .eq("id", str(record_id))
+            .execute()
+        )
         if not result.data:
             return None
         return dict(result.data[0])
