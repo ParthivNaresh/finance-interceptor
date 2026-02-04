@@ -11,10 +11,122 @@ from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchan
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.products import Products
+from plaid.model.transactions_recurring_get_request import TransactionsRecurringGetRequest
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 
 from config import Settings, get_settings
-from models.transaction import PlaidTransactionData, TransactionSyncResult
+from models.transaction import PlaidTransactionData
+
+
+class PlaidRecurringStream:
+    def __init__(self, data: dict[str, Any]) -> None:
+        self._data = data
+
+    @property
+    def stream_id(self) -> str:
+        return str(self._data.get("stream_id", ""))
+
+    @property
+    def account_id(self) -> str:
+        return str(self._data.get("account_id", ""))
+
+    @property
+    def description(self) -> str:
+        return str(self._data.get("description", ""))
+
+    @property
+    def merchant_name(self) -> str | None:
+        return self._data.get("merchant_name")
+
+    @property
+    def first_date(self) -> date:
+        first = self._data.get("first_date")
+        if isinstance(first, str):
+            return date.fromisoformat(first)
+        return first
+
+    @property
+    def last_date(self) -> date:
+        last = self._data.get("last_date")
+        if isinstance(last, str):
+            return date.fromisoformat(last)
+        return last
+
+    @property
+    def predicted_next_date(self) -> date | None:
+        predicted = self._data.get("predicted_next_date")
+        if predicted is None:
+            return None
+        if isinstance(predicted, str):
+            return date.fromisoformat(predicted)
+        return predicted
+
+    @property
+    def frequency(self) -> str:
+        return str(self._data.get("frequency", "UNKNOWN"))
+
+    @property
+    def average_amount(self) -> Decimal:
+        avg = self._data.get("average_amount", {})
+        amount = avg.get("amount", 0) if isinstance(avg, dict) else 0
+        return Decimal(str(abs(amount)))
+
+    @property
+    def last_amount(self) -> Decimal:
+        last = self._data.get("last_amount", {})
+        amount = last.get("amount", 0) if isinstance(last, dict) else 0
+        return Decimal(str(abs(amount)))
+
+    @property
+    def iso_currency_code(self) -> str:
+        avg = self._data.get("average_amount", {})
+        return avg.get("iso_currency_code", "USD") if isinstance(avg, dict) else "USD"
+
+    @property
+    def is_active(self) -> bool:
+        return bool(self._data.get("is_active", True))
+
+    @property
+    def status(self) -> str:
+        return str(self._data.get("status", "MATURE"))
+
+    @property
+    def is_user_modified(self) -> bool:
+        return bool(self._data.get("is_user_modified", False))
+
+    @property
+    def transaction_ids(self) -> list[str]:
+        return list(self._data.get("transaction_ids", []))
+
+    @property
+    def category_primary(self) -> str | None:
+        pfc = self._data.get("personal_finance_category")
+        if pfc and isinstance(pfc, dict):
+            return pfc.get("primary")
+        return None
+
+    @property
+    def category_detailed(self) -> str | None:
+        pfc = self._data.get("personal_finance_category")
+        if pfc and isinstance(pfc, dict):
+            return pfc.get("detailed")
+        return None
+
+    @property
+    def raw_data(self) -> dict[str, Any]:
+        return self._data
+
+
+class PlaidRecurringResponse:
+    def __init__(
+        self,
+        inflow_streams: list[PlaidRecurringStream],
+        outflow_streams: list[PlaidRecurringStream],
+        updated_datetime: str | None,
+    ) -> None:
+        self.inflow_streams = inflow_streams
+        self.outflow_streams = outflow_streams
+        self.updated_datetime = updated_datetime
 
 
 class PlaidServiceError(Exception):
@@ -128,6 +240,35 @@ class PlaidService:
         removed = [t.transaction_id for t in response.removed]
 
         return added, modified, removed, response.next_cursor, response.has_more
+
+    def get_recurring_transactions(
+        self,
+        access_token: str,
+        account_ids: list[str] | None = None,
+    ) -> PlaidRecurringResponse:
+        request_params: dict[str, Any] = {"access_token": access_token}
+        if account_ids:
+            request_params["account_ids"] = account_ids
+
+        request = TransactionsRecurringGetRequest(**request_params)
+        response = self._client.transactions_recurring_get(request)
+
+        response_dict = response.to_dict()
+
+        inflow_streams = [
+            PlaidRecurringStream(stream)
+            for stream in response_dict.get("inflow_streams", [])
+        ]
+        outflow_streams = [
+            PlaidRecurringStream(stream)
+            for stream in response_dict.get("outflow_streams", [])
+        ]
+
+        return PlaidRecurringResponse(
+            inflow_streams=inflow_streams,
+            outflow_streams=outflow_streams,
+            updated_datetime=response_dict.get("updated_datetime"),
+        )
 
     def _parse_transaction(self, txn: Any) -> PlaidTransactionData:
         location = txn.location

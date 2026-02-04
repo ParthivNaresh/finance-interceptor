@@ -18,6 +18,7 @@ from models.webhook import (
 if TYPE_CHECKING:
     from repositories.plaid_item import PlaidItemRepository
     from repositories.webhook_event import WebhookEventRepository
+    from services.recurring import RecurringSyncService
     from services.transaction_sync import TransactionSyncService
 
 
@@ -41,10 +42,12 @@ class WebhookService:
         webhook_event_repo: WebhookEventRepository,
         plaid_item_repo: PlaidItemRepository,
         transaction_sync_service: TransactionSyncService,
+        recurring_sync_service: RecurringSyncService,
     ) -> None:
         self._webhook_event_repo = webhook_event_repo
         self._plaid_item_repo = plaid_item_repo
         self._transaction_sync_service = transaction_sync_service
+        self._recurring_sync_service = recurring_sync_service
 
     def verify_signature(
         self,
@@ -162,7 +165,7 @@ class WebhookService:
         elif code == TransactionsWebhookCode.TRANSACTIONS_REMOVED:
             self._trigger_transaction_sync(webhook.item_id, event_id)
         elif code == TransactionsWebhookCode.RECURRING_TRANSACTIONS_UPDATE:
-            self._webhook_event_repo.update_status(event_id, WebhookEventStatus.COMPLETED)
+            self._trigger_recurring_sync(webhook.item_id, event_id)
         else:
             self._webhook_event_repo.update_status(
                 event_id,
@@ -226,13 +229,35 @@ class WebhookService:
 
     def _trigger_transaction_sync(self, item_id: str, event_id: UUID) -> None:
         try:
-            result = self._transaction_sync_service.sync_item(item_id)
+            self._transaction_sync_service.sync_item(item_id)
             self._webhook_event_repo.update_status(event_id, WebhookEventStatus.COMPLETED)
         except Exception as e:
             self._webhook_event_repo.update_status(
                 event_id,
                 WebhookEventStatus.FAILED,
                 error_message=f"Sync failed: {e}",
+            )
+            raise
+
+    def _trigger_recurring_sync(self, item_id: str, event_id: UUID) -> None:
+        try:
+            plaid_item = self._plaid_item_repo.get_by_item_id(item_id)
+            if not plaid_item:
+                self._webhook_event_repo.update_status(
+                    event_id,
+                    WebhookEventStatus.FAILED,
+                    error_message=f"Plaid item not found: {item_id}",
+                )
+                return
+
+            plaid_item_id = UUID(plaid_item["id"])
+            self._recurring_sync_service.sync_for_plaid_item(plaid_item_id)
+            self._webhook_event_repo.update_status(event_id, WebhookEventStatus.COMPLETED)
+        except Exception as e:
+            self._webhook_event_repo.update_status(
+                event_id,
+                WebhookEventStatus.FAILED,
+                error_message=f"Recurring sync failed: {e}",
             )
             raise
 
@@ -245,15 +270,18 @@ class WebhookServiceContainer:
         if cls._instance is None:
             from repositories.plaid_item import get_plaid_item_repository
             from repositories.webhook_event import get_webhook_event_repository
+            from services.recurring import get_recurring_sync_service
             from services.transaction_sync import get_transaction_sync_service
 
             webhook_event_repo = get_webhook_event_repository()
             plaid_item_repo = get_plaid_item_repository()
             transaction_sync_service = get_transaction_sync_service()
+            recurring_sync_service = get_recurring_sync_service()
             cls._instance = WebhookService(
                 webhook_event_repo,
                 plaid_item_repo,
                 transaction_sync_service,
+                recurring_sync_service,
             )
         return cls._instance
 

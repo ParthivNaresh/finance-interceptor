@@ -23,6 +23,18 @@ PlaidItemRepoDep = Annotated[PlaidItemRepository, Depends(get_plaid_item_reposit
 AccountRepoDep = Annotated[AccountRepository, Depends(get_account_repository)]
 TransactionSyncDep = Annotated[TransactionSyncService, Depends(get_transaction_sync_service)]
 
+LIABILITY_ACCOUNT_TYPES = frozenset({"credit", "loan"})
+
+
+def calculate_net_worth_contribution(account_type: str, balance: Decimal | None) -> Decimal:
+    if balance is None:
+        return Decimal("0")
+
+    if account_type in LIABILITY_ACCOUNT_TYPES:
+        return -balance
+
+    return balance
+
 
 @router.get(
     "",
@@ -61,8 +73,8 @@ async def list_accounts(
         ]
 
         for acc in accounts:
-            if acc.current_balance is not None:
-                total_balance += acc.current_balance
+            balance = Decimal(str(acc.current_balance)) if acc.current_balance is not None else None
+            total_balance += calculate_net_worth_contribution(acc.type, balance)
             account_count += 1
 
         items_with_accounts.append(

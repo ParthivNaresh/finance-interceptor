@@ -6,7 +6,23 @@ from services.encryption import (
     EncryptionServiceContainer,
     get_encryption_service,
 )
-from services.plaid import PlaidService, PlaidServiceContainer, PlaidServiceError, get_plaid_service
+from services.plaid import (
+    PlaidRecurringResponse,
+    PlaidRecurringStream,
+    PlaidService,
+    PlaidServiceContainer,
+    PlaidServiceError,
+    get_plaid_service,
+)
+from services.recurring import (
+    AlertDetectionService,
+    AlertDetectionServiceContainer,
+    RecurringSyncError,
+    RecurringSyncService,
+    RecurringSyncServiceContainer,
+    get_alert_detection_service,
+    get_recurring_sync_service,
+)
 from services.transaction_sync import (
     TransactionSyncError,
     TransactionSyncService,
@@ -22,6 +38,8 @@ from services.webhook import (
 )
 
 __all__ = [
+    "AlertDetectionService",
+    "AlertDetectionServiceContainer",
     "AuthService",
     "AuthServiceContainer",
     "DatabaseService",
@@ -29,9 +47,14 @@ __all__ = [
     "EncryptionError",
     "EncryptionService",
     "EncryptionServiceContainer",
+    "PlaidRecurringResponse",
+    "PlaidRecurringStream",
     "PlaidService",
     "PlaidServiceContainer",
     "PlaidServiceError",
+    "RecurringSyncError",
+    "RecurringSyncService",
+    "RecurringSyncServiceContainer",
     "TransactionSyncError",
     "TransactionSyncService",
     "TransactionSyncServiceContainer",
@@ -39,10 +62,12 @@ __all__ = [
     "WebhookService",
     "WebhookServiceContainer",
     "WebhookVerificationError",
+    "get_alert_detection_service",
     "get_auth_service",
     "get_database_service",
     "get_encryption_service",
     "get_plaid_service",
+    "get_recurring_sync_service",
     "get_transaction_sync_service",
     "get_webhook_service",
 ]

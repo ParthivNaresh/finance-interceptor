@@ -1,10 +1,10 @@
 # Finance Interceptor - Development Roadmap
 
-## Current Status: Phase 3 Complete ✅
+## Current Status: Phase 4 Complete ✅
 - ✅ Phase 1 Complete (Auth + Secrets Management)
 - ✅ Phase 2 Complete (Webhooks + Transaction Sync)
 - ✅ Phase 3 Complete (Core Features)
-- 🚧 Phase 4: Recurring Detection Engine
+- ✅ Phase 4 Complete (Recurring Detection Engine)
 
 ---
 
@@ -51,44 +51,133 @@
 - [x] Pull-to-refresh functionality
 - [x] Loading and empty states
 
+### 3.4 UI Redesign ✅
+- [x] Dark theme with glassmorphism
+- [x] i18n internationalization support
+- [x] Simplified navigation (Activity | Home)
+- [x] Profile menu (Accounts, Settings, Sign Out)
+- [x] Net Worth calculation (assets - liabilities)
+
 **Deliverable:** Users can view all their accounts and transactions in the app. ✅
 
 ---
 
-## Phase 4: Recurring Detection Engine
+## Phase 4: Recurring Detection Engine (Using Plaid API)
 
-### 4.1 Merchant Normalization
-- [ ] Implement basic normalization rules
-- [ ] Use Plaid's merchant_name and personal_finance_category
-- [ ] Build canonical merchant lookup service
+### 4.1 Database & Models ✅
+- [x] Create enum types (StreamType, FrequencyType, StreamStatus, AlertType, etc.)
+- [x] Create recurring_streams table
+- [x] Create alerts table (new schema)
+- [x] Create Pydantic models
+- [x] Update schema.sql
+- [x] Create migration file
 
-### 4.2 Recurring Transaction Detection
-- [ ] Implement frequency detection algorithm
-- [ ] Detect subscription patterns from transaction history
-- [ ] Create recurring_transactions records
-- [ ] Track expected amounts and dates
+### 4.2 Repositories ✅
+- [x] RecurringStreamRepository
+- [x] AlertRepository
 
-### 4.3 Price Change Detection
-- [ ] Compare new transactions to expected recurring amounts
-- [ ] Calculate percentage change
-- [ ] Create alerts when threshold exceeded
+### 4.3 Services ✅
+- [x] Add `get_recurring_transactions()` to PlaidService
+- [x] Create PriceSensitivityService (category-aware thresholds)
+- [x] Create AlertDetectionService
+- [x] Create RecurringSyncService
 
-**Deliverable:** System automatically detects subscriptions and price changes.
+### 4.4 API & Webhooks ✅
+- [x] Create recurring router
+- [x] Create alerts router
+- [x] Add RECURRING_TRANSACTIONS_UPDATE webhook handler
+
+### 4.5 Mobile App ✅
+- [x] TypeScript types
+- [x] API services
+- [x] Hooks (useRecurring, useAlerts)
+- [x] Recurring list screen
+- [x] Alerts screen
+
+**Deliverable:** System automatically detects subscriptions and price changes using Plaid's Recurring Transactions API. ✅
 
 ---
 
 ## Phase 5: Alert System
 
 ### 5.1 Alert Infrastructure
-### 5.2 Push Notifications
-### 5.3 Mobile App - Alerts
+- [ ] Push notification setup (Expo)
+- [ ] Backend notification service
+- [ ] User notification preferences
+
+### 5.2 Mobile App - Pulse Feed
+- [ ] Alert feed screen (replaces Home as primary)
+- [ ] Alert cards with actions (dismiss, view details)
+- [ ] Alert history
 
 **Deliverable:** Users receive push notifications for price changes.
 
 ---
 
-## Phase 6: Agentic Features (Future)
+## Phase 6: Agentic Features
+
+### 6.1 AI Assistant
+- [ ] Chat interface (FAB button)
+- [ ] Natural language queries ("How much did I spend on Uber last month?")
+- [ ] LLM integration (OpenAI/Anthropic)
+
+### 6.2 Proactive Insights
+- [ ] Lifestyle creep detection (baseline spending increase)
+- [ ] Spending anomaly detection
+- [ ] Budget recommendations
+
+**Deliverable:** AI-powered financial assistant.
+
+---
+
 ## Phase 7: Production Hardening
+
+### 7.1 Security
+- [ ] Rate limiting
+- [ ] Input validation audit
+- [ ] Security headers
+- [ ] Penetration testing
+
+### 7.2 Performance
+- [ ] Database indexing optimization
+- [ ] API response caching
+- [ ] Background job queue (Celery/Temporal)
+
+### 7.3 Monitoring
+- [ ] Error tracking (Sentry)
+- [ ] APM (Application Performance Monitoring)
+- [ ] Logging infrastructure
+
+### 7.4 Deployment
+- [ ] CI/CD pipeline
+- [ ] Staging environment
+- [ ] Production infrastructure
+
+**Deliverable:** Production-ready application.
+
+---
+
+## Future Considerations
+
+### Investment Portfolio Support
+Plaid's Investments product uses a separate API (`/investments/transactions/get`, `/investments/holdings/get`) with a different schema than regular transactions. This would require:
+
+- [ ] Add `investments` to Plaid products in link token creation
+- [ ] New database tables: `securities`, `holdings`, `investment_transactions`
+- [ ] New API endpoints: `/api/investments/holdings`, `/api/investments/transactions`
+- [ ] New mobile screens: Portfolio view, Investment transaction history
+- [ ] Holdings breakdown by asset class
+- [ ] Performance tracking (gains/losses)
+
+**Note:** Investment account balances are already included in Net Worth calculation. This feature would add transaction-level detail for investment accounts (buy/sell/dividend activity).
+
+### Additional Future Features
+- [ ] Bill calendar view
+- [ ] Spending categories breakdown
+- [ ] Multi-currency support
+- [ ] Export to CSV/PDF
+- [ ] Shared accounts (family/couples)
+- [ ] Light mode theme
 
 ---
 
@@ -100,7 +189,7 @@
 | Phase 1 - Foundation | ✅ Complete |
 | Phase 2 - Data Sync | ✅ Complete |
 | Phase 3 - Core Features | ✅ Complete |
-| Phase 4 - Recurring Detection | 🚧 Next |
+| Phase 4 - Recurring Detection | ✅ Complete |
 | Phase 5 - Alerts | Not Started |
 | Phase 6 - Agentic | Not Started |
 | Phase 7 - Production | Not Started |

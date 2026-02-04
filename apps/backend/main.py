@@ -5,7 +5,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from repositories.account import AccountRepositoryContainer
+from repositories.alert import AlertRepositoryContainer
 from repositories.plaid_item import PlaidItemRepositoryContainer
+from repositories.recurring_stream import RecurringStreamRepositoryContainer
 from repositories.transaction import TransactionRepositoryContainer
 from repositories.webhook_event import WebhookEventRepositoryContainer
 from routers import api_router
@@ -13,6 +15,7 @@ from services.auth import AuthServiceContainer
 from services.database import DatabaseServiceContainer
 from services.encryption import EncryptionServiceContainer
 from services.plaid import PlaidServiceContainer
+from services.recurring import AlertDetectionServiceContainer, RecurringSyncServiceContainer
 from services.transaction_sync import TransactionSyncServiceContainer
 from services.webhook import WebhookServiceContainer
 
@@ -27,11 +30,19 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     AccountRepositoryContainer.get()
     TransactionRepositoryContainer.get()
     WebhookEventRepositoryContainer.get()
+    RecurringStreamRepositoryContainer.get()
+    AlertRepositoryContainer.get()
     TransactionSyncServiceContainer.get()
+    AlertDetectionServiceContainer.get()
+    RecurringSyncServiceContainer.get()
     WebhookServiceContainer.get()
     yield
     WebhookServiceContainer.reset()
+    RecurringSyncServiceContainer.reset()
+    AlertDetectionServiceContainer.reset()
     TransactionSyncServiceContainer.reset()
+    AlertRepositoryContainer.reset()
+    RecurringStreamRepositoryContainer.reset()
     WebhookEventRepositoryContainer.reset()
     TransactionRepositoryContainer.reset()
     AccountRepositoryContainer.reset()

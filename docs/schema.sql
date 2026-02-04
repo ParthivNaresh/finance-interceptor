@@ -6,6 +6,57 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- ============================================================================
+-- ENUM TYPES
+-- ============================================================================
+
+CREATE TYPE stream_type AS ENUM ('inflow', 'outflow');
+
+CREATE TYPE frequency_type AS ENUM (
+    'weekly',
+    'biweekly',
+    'semi_monthly',
+    'monthly',
+    'quarterly',
+    'semi_annually',
+    'annually',
+    'unknown'
+);
+
+CREATE TYPE stream_status AS ENUM (
+    'mature',
+    'early_detection',
+    'tombstoned'
+);
+
+CREATE TYPE alert_type AS ENUM (
+    'price_increase',
+    'price_decrease',
+    'new_subscription',
+    'cancelled_subscription',
+    'missed_payment'
+);
+
+CREATE TYPE alert_severity AS ENUM (
+    'low',
+    'medium',
+    'high'
+);
+
+CREATE TYPE alert_status AS ENUM (
+    'unread',
+    'read',
+    'dismissed',
+    'actioned'
+);
+
+CREATE TYPE user_action_type AS ENUM (
+    'dismissed',
+    'cancelled_subscription',
+    'kept',
+    'watching'
+);
+
+-- ============================================================================
 -- CORE TABLES
 -- ============================================================================
 
@@ -150,7 +201,88 @@ CREATE INDEX idx_transactions_pending ON public.transactions(pending);
 CREATE INDEX idx_transactions_account_date ON public.transactions(account_id, date DESC);
 
 -- ============================================================================
--- RECURRING TRANSACTIONS & SUBSCRIPTIONS
+-- RECURRING STREAMS (FROM PLAID API)
+-- ============================================================================
+
+CREATE TABLE public.recurring_streams (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    plaid_item_id UUID NOT NULL REFERENCES public.plaid_items(id) ON DELETE CASCADE,
+    account_id UUID NOT NULL REFERENCES public.accounts(id) ON DELETE CASCADE,
+    
+    stream_id TEXT NOT NULL,
+    stream_type stream_type NOT NULL,
+    description TEXT NOT NULL,
+    merchant_name TEXT,
+    
+    category_primary TEXT,
+    category_detailed TEXT,
+    
+    frequency frequency_type NOT NULL,
+    first_date DATE NOT NULL,
+    last_date DATE NOT NULL,
+    predicted_next_date DATE,
+    
+    average_amount DECIMAL(12, 2) NOT NULL,
+    last_amount DECIMAL(12, 2) NOT NULL,
+    iso_currency_code TEXT DEFAULT 'USD',
+    
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    status stream_status NOT NULL,
+    is_user_modified BOOLEAN NOT NULL DEFAULT FALSE,
+    
+    transaction_ids TEXT[],
+    plaid_raw JSONB,
+    
+    last_synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(plaid_item_id, stream_id)
+);
+
+CREATE INDEX idx_recurring_streams_user_id ON public.recurring_streams(user_id);
+CREATE INDEX idx_recurring_streams_plaid_item_id ON public.recurring_streams(plaid_item_id);
+CREATE INDEX idx_recurring_streams_account_id ON public.recurring_streams(account_id);
+CREATE INDEX idx_recurring_streams_is_active ON public.recurring_streams(is_active);
+CREATE INDEX idx_recurring_streams_status ON public.recurring_streams(status);
+CREATE INDEX idx_recurring_streams_stream_type ON public.recurring_streams(stream_type);
+CREATE INDEX idx_recurring_streams_predicted_next ON public.recurring_streams(predicted_next_date);
+
+-- ============================================================================
+-- ALERTS
+-- ============================================================================
+
+CREATE TABLE public.alerts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    recurring_stream_id UUID REFERENCES public.recurring_streams(id) ON DELETE SET NULL,
+    
+    alert_type alert_type NOT NULL,
+    severity alert_severity NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    data JSONB,
+    
+    status alert_status NOT NULL DEFAULT 'unread',
+    user_action user_action_type,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    read_at TIMESTAMPTZ,
+    dismissed_at TIMESTAMPTZ,
+    actioned_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_alerts_user_id ON public.alerts(user_id);
+CREATE INDEX idx_alerts_status ON public.alerts(status);
+CREATE INDEX idx_alerts_alert_type ON public.alerts(alert_type);
+CREATE INDEX idx_alerts_created_at ON public.alerts(created_at DESC);
+CREATE INDEX idx_alerts_user_status ON public.alerts(user_id, status);
+CREATE INDEX idx_alerts_recurring_stream_id ON public.alerts(recurring_stream_id);
+
+-- ============================================================================
+-- LEGACY RECURRING TRANSACTIONS (CUSTOM DETECTION - DEPRECATED)
+-- Keeping for backwards compatibility, will be removed in future
 -- ============================================================================
 
 CREATE TABLE public.recurring_transactions (
@@ -199,35 +331,8 @@ CREATE INDEX idx_price_changes_recurring_id ON public.price_changes(recurring_tr
 CREATE INDEX idx_price_changes_detected_at ON public.price_changes(detected_at DESC);
 
 -- ============================================================================
--- ALERTS & NOTIFICATIONS
+-- NOTIFICATIONS
 -- ============================================================================
-
-CREATE TABLE public.alerts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,
-    severity TEXT NOT NULL DEFAULT 'info',
-    title TEXT NOT NULL,
-    message TEXT NOT NULL,
-    recurring_transaction_id UUID REFERENCES public.recurring_transactions(id) ON DELETE SET NULL,
-    price_change_id UUID REFERENCES public.price_changes(id) ON DELETE SET NULL,
-    plaid_item_id UUID REFERENCES public.plaid_items(id) ON DELETE SET NULL,
-    transaction_id UUID REFERENCES public.transactions(id) ON DELETE SET NULL,
-    context JSONB,
-    status TEXT NOT NULL DEFAULT 'unread',
-    snoozed_until TIMESTAMPTZ,
-    action_taken TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    read_at TIMESTAMPTZ,
-    dismissed_at TIMESTAMPTZ,
-    actioned_at TIMESTAMPTZ
-);
-
-CREATE INDEX idx_alerts_user_id ON public.alerts(user_id);
-CREATE INDEX idx_alerts_status ON public.alerts(status);
-CREATE INDEX idx_alerts_type ON public.alerts(type);
-CREATE INDEX idx_alerts_created_at ON public.alerts(created_at DESC);
-CREATE INDEX idx_alerts_user_status ON public.alerts(user_id, status);
 
 CREATE TABLE public.notification_preferences (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -331,7 +436,7 @@ CREATE TABLE public.sync_jobs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_sync_jobs_plaid_item_id ON public.sync_jobs(plaid_item_id);
+CREATE INDEX idx_sync_jobs_plaid_item_id ON sync_jobs(plaid_item_id);
 CREATE INDEX idx_sync_jobs_status ON public.sync_jobs(status);
 
 -- ============================================================================
@@ -372,6 +477,7 @@ ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.merchants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.merchant_aliases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.merchant_embeddings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.recurring_streams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recurring_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.price_changes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.alerts ENABLE ROW LEVEL SECURITY;
@@ -414,6 +520,9 @@ CREATE POLICY "Anyone can view merchant_aliases" ON public.merchant_aliases
 
 CREATE POLICY "Anyone can view merchant_embeddings" ON public.merchant_embeddings
     FOR SELECT USING (true);
+
+CREATE POLICY "Users can manage own recurring_streams" ON public.recurring_streams
+    FOR ALL USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can view own recurring_transactions" ON public.recurring_transactions
     FOR ALL USING (auth.uid() = user_id);
@@ -468,6 +577,9 @@ CREATE TRIGGER update_transactions_updated_at BEFORE UPDATE ON public.transactio
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_merchants_updated_at BEFORE UPDATE ON public.merchants
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_recurring_streams_updated_at BEFORE UPDATE ON public.recurring_streams
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_recurring_transactions_updated_at BEFORE UPDATE ON public.recurring_transactions
