@@ -56,6 +56,38 @@ CREATE TYPE user_action_type AS ENUM (
     'watching'
 );
 
+CREATE TYPE period_type AS ENUM ('daily', 'weekly', 'monthly', 'yearly');
+
+CREATE TYPE baseline_type AS ENUM ('rolling_3mo', 'rolling_12mo', 'seasonal');
+
+CREATE TYPE anomaly_type AS ENUM (
+    'large_amount',
+    'new_merchant',
+    'category_spike',
+    'duplicate',
+    'unusual_time',
+    'unusual_location'
+);
+
+CREATE TYPE anomaly_context AS ENUM (
+    'subscription_price_change',
+    'discretionary_spike',
+    'new_vendor',
+    'duplicate_charge',
+    'unusual_timing'
+);
+
+CREATE TYPE income_source_type AS ENUM (
+    'salary',
+    'freelance',
+    'investment',
+    'transfer',
+    'refund',
+    'other'
+);
+
+CREATE TYPE computation_status AS ENUM ('success', 'failed', 'in_progress');
+
 -- ============================================================================
 -- CORE TABLES
 -- ============================================================================
@@ -190,6 +222,7 @@ CREATE TABLE public.transactions (
     logo_url TEXT,
     website TEXT,
     check_number TEXT,
+    is_internal_transfer BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -199,6 +232,7 @@ CREATE INDEX idx_transactions_date ON public.transactions(date DESC);
 CREATE INDEX idx_transactions_merchant_id ON public.transactions(merchant_id);
 CREATE INDEX idx_transactions_pending ON public.transactions(pending);
 CREATE INDEX idx_transactions_account_date ON public.transactions(account_id, date DESC);
+CREATE INDEX idx_transactions_is_internal_transfer ON public.transactions(is_internal_transfer) WHERE is_internal_transfer = TRUE;
 
 -- ============================================================================
 -- RECURRING STREAMS (FROM PLAID API)
@@ -281,54 +315,312 @@ CREATE INDEX idx_alerts_user_status ON public.alerts(user_id, status);
 CREATE INDEX idx_alerts_recurring_stream_id ON public.alerts(recurring_stream_id);
 
 -- ============================================================================
--- LEGACY RECURRING TRANSACTIONS (CUSTOM DETECTION - DEPRECATED)
--- Keeping for backwards compatibility, will be removed in future
+-- ANALYTICS ENGINE - SPENDING PERIODS
 -- ============================================================================
 
-CREATE TABLE public.recurring_transactions (
+CREATE TABLE public.spending_periods (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    merchant_id UUID REFERENCES public.merchants(id),
-    merchant_pattern TEXT NOT NULL,
-    account_id UUID REFERENCES public.accounts(id) ON DELETE SET NULL,
-    frequency TEXT NOT NULL,
-    frequency_days INTEGER,
-    expected_amount DECIMAL(19, 4) NOT NULL,
-    amount_variance DECIMAL(19, 4),
-    expected_day_of_month INTEGER,
-    first_seen_date DATE NOT NULL,
-    last_transaction_date DATE,
-    last_transaction_amount DECIMAL(19, 4),
-    next_expected_date DATE,
-    transaction_count INTEGER NOT NULL DEFAULT 1,
-    status TEXT NOT NULL DEFAULT 'active',
-    confidence_score DECIMAL(3, 2) NOT NULL DEFAULT 0.5,
-    is_user_confirmed BOOLEAN DEFAULT FALSE,
-    initial_amount DECIMAL(19, 4),
-    price_change_count INTEGER DEFAULT 0,
-    total_price_change_percentage DECIMAL(5, 2) DEFAULT 0,
+    period_type period_type NOT NULL,
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    
+    total_inflow DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    total_outflow DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    net_flow DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    
+    total_inflow_excluding_transfers DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    total_outflow_excluding_transfers DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    net_flow_excluding_transfers DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    
+    transaction_count INTEGER NOT NULL DEFAULT 0,
+    is_finalized BOOLEAN NOT NULL DEFAULT FALSE,
+    
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(user_id, period_type, period_start)
 );
 
-CREATE INDEX idx_recurring_user_id ON public.recurring_transactions(user_id);
-CREATE INDEX idx_recurring_merchant_id ON public.recurring_transactions(merchant_id);
-CREATE INDEX idx_recurring_status ON public.recurring_transactions(status);
-CREATE INDEX idx_recurring_next_expected ON public.recurring_transactions(next_expected_date);
+CREATE INDEX idx_spending_periods_user_id ON public.spending_periods(user_id);
+CREATE INDEX idx_spending_periods_user_period ON public.spending_periods(user_id, period_type);
+CREATE INDEX idx_spending_periods_period_start ON public.spending_periods(period_start DESC);
+CREATE INDEX idx_spending_periods_finalized ON public.spending_periods(is_finalized) WHERE is_finalized = FALSE;
 
-CREATE TABLE public.price_changes (
+-- ============================================================================
+-- ANALYTICS ENGINE - CATEGORY SPENDING
+-- ============================================================================
+
+CREATE TABLE public.category_spending (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    recurring_transaction_id UUID NOT NULL REFERENCES public.recurring_transactions(id) ON DELETE CASCADE,
-    transaction_id UUID REFERENCES public.transactions(id) ON DELETE SET NULL,
-    previous_amount DECIMAL(19, 4) NOT NULL,
-    new_amount DECIMAL(19, 4) NOT NULL,
-    change_amount DECIMAL(19, 4) NOT NULL,
-    change_percentage DECIMAL(5, 2) NOT NULL,
-    detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    period_type period_type NOT NULL,
+    period_start DATE NOT NULL,
+    
+    category_primary TEXT NOT NULL,
+    category_detailed TEXT,
+    
+    total_amount DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    transaction_count INTEGER NOT NULL DEFAULT 0,
+    average_transaction DECIMAL(19, 4),
+    largest_transaction DECIMAL(19, 4),
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(user_id, period_type, period_start, category_primary)
 );
 
-CREATE INDEX idx_price_changes_recurring_id ON public.price_changes(recurring_transaction_id);
-CREATE INDEX idx_price_changes_detected_at ON public.price_changes(detected_at DESC);
+CREATE INDEX idx_category_spending_user_id ON public.category_spending(user_id);
+CREATE INDEX idx_category_spending_user_category ON public.category_spending(user_id, category_primary);
+CREATE INDEX idx_category_spending_period ON public.category_spending(period_start DESC);
+
+-- ============================================================================
+-- ANALYTICS ENGINE - MERCHANT SPENDING
+-- ============================================================================
+
+CREATE TABLE public.merchant_spending (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    period_type period_type NOT NULL DEFAULT 'monthly',
+    period_start DATE NOT NULL,
+    
+    merchant_name TEXT NOT NULL,
+    merchant_id UUID REFERENCES public.merchants(id) ON DELETE SET NULL,
+    
+    total_amount DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    transaction_count INTEGER NOT NULL DEFAULT 0,
+    average_transaction DECIMAL(19, 4),
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(user_id, period_type, period_start, merchant_name)
+);
+
+CREATE INDEX idx_merchant_spending_user_id ON public.merchant_spending(user_id);
+CREATE INDEX idx_merchant_spending_user_merchant ON public.merchant_spending(user_id, merchant_name);
+CREATE INDEX idx_merchant_spending_period ON public.merchant_spending(period_start DESC);
+
+-- ============================================================================
+-- ANALYTICS ENGINE - MERCHANT STATS
+-- ============================================================================
+
+CREATE TABLE public.merchant_stats (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    
+    merchant_name TEXT NOT NULL,
+    merchant_id UUID REFERENCES public.merchants(id) ON DELETE SET NULL,
+    
+    first_transaction_date DATE NOT NULL,
+    last_transaction_date DATE NOT NULL,
+    
+    total_lifetime_spend DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    total_transaction_count INTEGER NOT NULL DEFAULT 0,
+    
+    average_transaction_amount DECIMAL(19, 4),
+    median_transaction_amount DECIMAL(19, 4),
+    max_transaction_amount DECIMAL(19, 4),
+    min_transaction_amount DECIMAL(19, 4),
+    
+    average_days_between_transactions DECIMAL(10, 2),
+    most_frequent_day_of_week INTEGER,
+    most_frequent_hour_of_day INTEGER,
+    
+    is_recurring BOOLEAN DEFAULT FALSE,
+    recurring_stream_id UUID REFERENCES public.recurring_streams(id) ON DELETE SET NULL,
+    primary_category TEXT,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(user_id, merchant_name)
+);
+
+CREATE INDEX idx_merchant_stats_user_id ON public.merchant_stats(user_id);
+CREATE INDEX idx_merchant_stats_lifetime_spend ON public.merchant_stats(user_id, total_lifetime_spend DESC);
+CREATE INDEX idx_merchant_stats_is_recurring ON public.merchant_stats(is_recurring) WHERE is_recurring = TRUE;
+
+-- ============================================================================
+-- ANALYTICS ENGINE - CASH FLOW METRICS
+-- ============================================================================
+
+CREATE TABLE public.cash_flow_metrics (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    period_start DATE NOT NULL,
+    
+    total_income DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    total_expenses DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    net_cash_flow DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    
+    savings_rate DECIMAL(5, 4),
+    
+    recurring_expenses DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    discretionary_expenses DECIMAL(19, 4) NOT NULL DEFAULT 0,
+    
+    income_sources_count INTEGER NOT NULL DEFAULT 0,
+    expense_categories_count INTEGER NOT NULL DEFAULT 0,
+    
+    largest_expense_category TEXT,
+    largest_expense_amount DECIMAL(19, 4),
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(user_id, period_start)
+);
+
+CREATE INDEX idx_cash_flow_metrics_user_id ON public.cash_flow_metrics(user_id);
+CREATE INDEX idx_cash_flow_metrics_period ON public.cash_flow_metrics(user_id, period_start DESC);
+
+-- ============================================================================
+-- ANALYTICS ENGINE - LIFESTYLE BASELINES
+-- ============================================================================
+
+CREATE TABLE public.lifestyle_baselines (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    category_primary TEXT NOT NULL,
+    
+    baseline_type baseline_type NOT NULL DEFAULT 'rolling_3mo',
+    baseline_monthly_amount DECIMAL(19, 4) NOT NULL,
+    baseline_transaction_count INTEGER NOT NULL,
+    
+    baseline_period_start DATE NOT NULL,
+    baseline_period_end DATE NOT NULL,
+    baseline_months_count INTEGER NOT NULL,
+    
+    seasonal_adjustment_factor DECIMAL(5, 4),
+    is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(user_id, category_primary)
+);
+
+CREATE INDEX idx_lifestyle_baselines_user_id ON public.lifestyle_baselines(user_id);
+
+-- ============================================================================
+-- ANALYTICS ENGINE - LIFESTYLE CREEP SCORES
+-- ============================================================================
+
+CREATE TABLE public.lifestyle_creep_scores (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    period_start DATE NOT NULL,
+    category_primary TEXT NOT NULL,
+    
+    baseline_amount DECIMAL(19, 4) NOT NULL,
+    current_amount DECIMAL(19, 4) NOT NULL,
+    
+    absolute_change DECIMAL(19, 4) NOT NULL,
+    percentage_change DECIMAL(7, 4) NOT NULL,
+    creep_score DECIMAL(5, 2) NOT NULL,
+    
+    is_inflation_adjusted BOOLEAN NOT NULL DEFAULT FALSE,
+    inflation_rate_used DECIMAL(5, 4),
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(user_id, period_start, category_primary)
+);
+
+CREATE INDEX idx_lifestyle_creep_scores_user_id ON public.lifestyle_creep_scores(user_id);
+CREATE INDEX idx_lifestyle_creep_scores_period ON public.lifestyle_creep_scores(user_id, period_start DESC);
+
+-- ============================================================================
+-- ANALYTICS ENGINE - TRANSACTION ANOMALIES
+-- ============================================================================
+
+CREATE TABLE public.transaction_anomalies (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    transaction_id UUID NOT NULL REFERENCES public.transactions(id) ON DELETE CASCADE,
+    recurring_stream_id UUID REFERENCES public.recurring_streams(id) ON DELETE SET NULL,
+    
+    anomaly_type anomaly_type NOT NULL,
+    anomaly_context anomaly_context,
+    severity alert_severity NOT NULL,
+    
+    description TEXT NOT NULL,
+    reference_value DECIMAL(19, 4),
+    actual_value DECIMAL(19, 4),
+    deviation_factor DECIMAL(10, 4),
+    
+    is_reviewed BOOLEAN NOT NULL DEFAULT FALSE,
+    is_false_positive BOOLEAN NOT NULL DEFAULT FALSE,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ,
+    
+    UNIQUE(transaction_id, anomaly_type)
+);
+
+CREATE INDEX idx_transaction_anomalies_user_id ON public.transaction_anomalies(user_id);
+CREATE INDEX idx_transaction_anomalies_unreviewed ON public.transaction_anomalies(user_id, is_reviewed) WHERE is_reviewed = FALSE;
+CREATE INDEX idx_transaction_anomalies_created ON public.transaction_anomalies(created_at DESC);
+CREATE INDEX idx_transaction_anomalies_recurring ON public.transaction_anomalies(recurring_stream_id) WHERE recurring_stream_id IS NOT NULL;
+
+-- ============================================================================
+-- ANALYTICS ENGINE - INCOME SOURCES
+-- ============================================================================
+
+CREATE TABLE public.income_sources (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    account_id UUID REFERENCES public.accounts(id) ON DELETE SET NULL,
+    
+    source_name TEXT NOT NULL,
+    source_type income_source_type NOT NULL DEFAULT 'other',
+    
+    frequency frequency_type NOT NULL DEFAULT 'monthly',
+    average_amount DECIMAL(19, 4) NOT NULL,
+    last_amount DECIMAL(19, 4) NOT NULL,
+    
+    first_date DATE NOT NULL,
+    last_date DATE NOT NULL,
+    next_expected_date DATE,
+    
+    transaction_count INTEGER NOT NULL DEFAULT 1,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    confidence_score DECIMAL(3, 2) NOT NULL DEFAULT 0.5,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(user_id, source_name)
+);
+
+CREATE INDEX idx_income_sources_user_id ON public.income_sources(user_id);
+CREATE INDEX idx_income_sources_active ON public.income_sources(user_id, is_active) WHERE is_active = TRUE;
+
+-- ============================================================================
+-- ANALYTICS ENGINE - COMPUTATION LOG
+-- ============================================================================
+
+CREATE TABLE public.analytics_computation_log (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    
+    computation_type TEXT NOT NULL,
+    last_computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    last_transaction_date DATE,
+    last_transaction_id UUID,
+    
+    computation_duration_ms INTEGER,
+    rows_affected INTEGER,
+    
+    status computation_status NOT NULL DEFAULT 'success',
+    error_message TEXT,
+    
+    UNIQUE(user_id, computation_type)
+);
+
+CREATE INDEX idx_analytics_computation_log_user_id ON public.analytics_computation_log(user_id);
 
 -- ============================================================================
 -- NOTIFICATIONS
@@ -440,33 +732,6 @@ CREATE INDEX idx_sync_jobs_plaid_item_id ON sync_jobs(plaid_item_id);
 CREATE INDEX idx_sync_jobs_status ON public.sync_jobs(status);
 
 -- ============================================================================
--- SPENDING ANALYTICS
--- ============================================================================
-
-CREATE TABLE public.spending_summaries (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    period_type TEXT NOT NULL,
-    period_start DATE NOT NULL,
-    period_end DATE NOT NULL,
-    total_spending DECIMAL(19, 4) NOT NULL,
-    total_income DECIMAL(19, 4) NOT NULL,
-    net_change DECIMAL(19, 4) NOT NULL,
-    recurring_spending DECIMAL(19, 4) NOT NULL,
-    recurring_count INTEGER NOT NULL,
-    spending_change_amount DECIMAL(19, 4),
-    spending_change_percentage DECIMAL(5, 2),
-    recurring_change_amount DECIMAL(19, 4),
-    recurring_change_percentage DECIMAL(5, 2),
-    category_breakdown JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(user_id, period_type, period_start)
-);
-
-CREATE INDEX idx_spending_summaries_user_id ON public.spending_summaries(user_id);
-CREATE INDEX idx_spending_summaries_period ON public.spending_summaries(period_start DESC);
-
--- ============================================================================
 -- ROW LEVEL SECURITY
 -- ============================================================================
 
@@ -478,16 +743,23 @@ ALTER TABLE public.merchants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.merchant_aliases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.merchant_embeddings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recurring_streams ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.recurring_transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.price_changes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.spending_periods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.category_spending ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.merchant_spending ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.merchant_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cash_flow_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.lifestyle_baselines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.lifestyle_creep_scores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transaction_anomalies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.income_sources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.analytics_computation_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.push_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.agent_decisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_agent_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.webhook_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sync_jobs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.spending_summaries ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view own profile" ON public.users
     FOR SELECT USING (auth.uid() = id);
@@ -524,17 +796,37 @@ CREATE POLICY "Anyone can view merchant_embeddings" ON public.merchant_embedding
 CREATE POLICY "Users can manage own recurring_streams" ON public.recurring_streams
     FOR ALL USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can view own recurring_transactions" ON public.recurring_transactions
+CREATE POLICY "Users can manage own alerts" ON public.alerts
     FOR ALL USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can view own price_changes" ON public.price_changes
-    FOR SELECT USING (
-        recurring_transaction_id IN (
-            SELECT id FROM public.recurring_transactions WHERE user_id = auth.uid()
-        )
-    );
+CREATE POLICY "Users can view own spending_periods" ON public.spending_periods
+    FOR ALL USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can manage own alerts" ON public.alerts
+CREATE POLICY "Users can view own category_spending" ON public.category_spending
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own merchant_spending" ON public.merchant_spending
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own merchant_stats" ON public.merchant_stats
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own cash_flow_metrics" ON public.cash_flow_metrics
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own lifestyle_baselines" ON public.lifestyle_baselines
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own lifestyle_creep_scores" ON public.lifestyle_creep_scores
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own transaction_anomalies" ON public.transaction_anomalies
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own income_sources" ON public.income_sources
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own analytics_computation_log" ON public.analytics_computation_log
     FOR ALL USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can manage own notification_preferences" ON public.notification_preferences
@@ -548,9 +840,6 @@ CREATE POLICY "Users can view own agent_decisions" ON public.agent_decisions
 
 CREATE POLICY "Users can manage own agent_permissions" ON public.user_agent_permissions
     FOR ALL USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can view own spending_summaries" ON public.spending_summaries
-    FOR SELECT USING (auth.uid() = user_id);
 
 -- ============================================================================
 -- FUNCTIONS & TRIGGERS
@@ -582,7 +871,25 @@ CREATE TRIGGER update_merchants_updated_at BEFORE UPDATE ON public.merchants
 CREATE TRIGGER update_recurring_streams_updated_at BEFORE UPDATE ON public.recurring_streams
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_recurring_transactions_updated_at BEFORE UPDATE ON public.recurring_transactions
+CREATE TRIGGER update_spending_periods_updated_at BEFORE UPDATE ON public.spending_periods
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_category_spending_updated_at BEFORE UPDATE ON public.category_spending
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_merchant_spending_updated_at BEFORE UPDATE ON public.merchant_spending
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_merchant_stats_updated_at BEFORE UPDATE ON public.merchant_stats
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_cash_flow_metrics_updated_at BEFORE UPDATE ON public.cash_flow_metrics
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_lifestyle_baselines_updated_at BEFORE UPDATE ON public.lifestyle_baselines
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_income_sources_updated_at BEFORE UPDATE ON public.income_sources
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_notification_preferences_updated_at BEFORE UPDATE ON public.notification_preferences

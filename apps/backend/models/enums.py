@@ -71,3 +71,48 @@ class UserActionType(str, Enum):
     CANCELLED_SUBSCRIPTION = "cancelled_subscription"
     KEPT = "kept"
     WATCHING = "watching"
+
+
+class PeriodType(str, Enum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+
+
+class BaselineType(str, Enum):
+    ROLLING_3MO = "rolling_3mo"
+    ROLLING_12MO = "rolling_12mo"
+    SEASONAL = "seasonal"
+
+
+class AnomalyType(str, Enum):
+    LARGE_AMOUNT = "large_amount"
+    NEW_MERCHANT = "new_merchant"
+    CATEGORY_SPIKE = "category_spike"
+    DUPLICATE = "duplicate"
+    UNUSUAL_TIME = "unusual_time"
+    UNUSUAL_LOCATION = "unusual_location"
+
+
+class AnomalyContext(str, Enum):
+    SUBSCRIPTION_PRICE_CHANGE = "subscription_price_change"
+    DISCRETIONARY_SPIKE = "discretionary_spike"
+    NEW_VENDOR = "new_vendor"
+    DUPLICATE_CHARGE = "duplicate_charge"
+    UNUSUAL_TIMING = "unusual_timing"
+
+
+class IncomeSourceType(str, Enum):
+    SALARY = "salary"
+    FREELANCE = "freelance"
+    INVESTMENT = "investment"
+    TRANSFER = "transfer"
+    REFUND = "refund"
+    OTHER = "other"
+
+
+class ComputationStatus(str, Enum):
+    SUCCESS = "success"
+    FAILED = "failed"
+    IN_PROGRESS = "in_progress"

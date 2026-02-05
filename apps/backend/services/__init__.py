@@ -1,3 +1,18 @@
+from services.analytics import (
+    COMPUTATION_TYPE_SPENDING,
+    AggregationResult,
+    ComputationResult,
+    SpendingAggregator,
+    SpendingAggregatorContainer,
+    SpendingComputationError,
+    SpendingComputationManager,
+    SpendingComputationManagerContainer,
+    TransferDetector,
+    TransferDetectorContainer,
+    get_spending_aggregator,
+    get_spending_computation_manager,
+    get_transfer_detector,
+)
 from services.auth import AuthService, AuthServiceContainer, get_auth_service
 from services.database import DatabaseService, DatabaseServiceContainer, get_database_service
 from services.encryption import (
@@ -38,10 +53,13 @@ from services.webhook import (
 )
 
 __all__ = [
+    "COMPUTATION_TYPE_SPENDING",
+    "AggregationResult",
     "AlertDetectionService",
     "AlertDetectionServiceContainer",
     "AuthService",
     "AuthServiceContainer",
+    "ComputationResult",
     "DatabaseService",
     "DatabaseServiceContainer",
     "EncryptionError",
@@ -55,9 +73,16 @@ __all__ = [
     "RecurringSyncError",
     "RecurringSyncService",
     "RecurringSyncServiceContainer",
+    "SpendingAggregator",
+    "SpendingAggregatorContainer",
+    "SpendingComputationError",
+    "SpendingComputationManager",
+    "SpendingComputationManagerContainer",
     "TransactionSyncError",
     "TransactionSyncService",
     "TransactionSyncServiceContainer",
+    "TransferDetector",
+    "TransferDetectorContainer",
     "WebhookProcessingError",
     "WebhookService",
     "WebhookServiceContainer",
@@ -68,6 +93,9 @@ __all__ = [
     "get_encryption_service",
     "get_plaid_service",
     "get_recurring_sync_service",
+    "get_spending_aggregator",
+    "get_spending_computation_manager",
     "get_transaction_sync_service",
+    "get_transfer_detector",
     "get_webhook_service",
 ]

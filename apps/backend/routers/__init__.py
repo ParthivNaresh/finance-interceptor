@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from .accounts import router as accounts_router
 from .alerts import router as alerts_router
+from .analytics import router as analytics_router
 from .health import router as health_router
 from .plaid import router as plaid_router
 from .recurring import router as recurring_router
@@ -16,3 +17,4 @@ api_router.include_router(accounts_router, prefix="/api/accounts", tags=["Accoun
 api_router.include_router(transactions_router, prefix="/api/transactions", tags=["Transactions"])
 api_router.include_router(recurring_router, prefix="/api/recurring", tags=["Recurring"])
 api_router.include_router(alerts_router, prefix="/api/alerts", tags=["Alerts"])
+api_router.include_router(analytics_router, prefix="/api/analytics", tags=["Analytics"])

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import time
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -18,8 +19,11 @@ from models.webhook import (
 if TYPE_CHECKING:
     from repositories.plaid_item import PlaidItemRepository
     from repositories.webhook_event import WebhookEventRepository
+    from services.analytics.computation_manager import SpendingComputationManager
     from services.recurring import RecurringSyncService
     from services.transaction_sync import TransactionSyncService
+
+logger = logging.getLogger(__name__)
 
 
 class WebhookVerificationError(Exception):
@@ -43,11 +47,13 @@ class WebhookService:
         plaid_item_repo: PlaidItemRepository,
         transaction_sync_service: TransactionSyncService,
         recurring_sync_service: RecurringSyncService,
+        spending_computation_manager: SpendingComputationManager,
     ) -> None:
         self._webhook_event_repo = webhook_event_repo
         self._plaid_item_repo = plaid_item_repo
         self._transaction_sync_service = transaction_sync_service
         self._recurring_sync_service = recurring_sync_service
+        self._spending_computation_manager = spending_computation_manager
 
     def verify_signature(
         self,
@@ -230,6 +236,12 @@ class WebhookService:
     def _trigger_transaction_sync(self, item_id: str, event_id: UUID) -> None:
         try:
             self._transaction_sync_service.sync_item(item_id)
+
+            plaid_item = self._plaid_item_repo.get_by_item_id(item_id)
+            if plaid_item:
+                user_id = UUID(plaid_item["user_id"])
+                self._trigger_analytics_computation(user_id)
+
             self._webhook_event_repo.update_status(event_id, WebhookEventStatus.COMPLETED)
         except Exception as e:
             self._webhook_event_repo.update_status(
@@ -261,6 +273,22 @@ class WebhookService:
             )
             raise
 
+    def _trigger_analytics_computation(self, user_id: UUID) -> None:
+        try:
+            result = self._spending_computation_manager.compute_current_month(user_id)
+            logger.info(
+                "Analytics computation completed for user %s: %d periods, %d transactions",
+                user_id,
+                result.periods_computed,
+                result.transactions_processed,
+            )
+        except Exception as e:
+            logger.warning(
+                "Analytics computation failed for user %s: %s",
+                user_id,
+                str(e),
+            )
+
 
 class WebhookServiceContainer:
     _instance: WebhookService | None = None
@@ -270,6 +298,7 @@ class WebhookServiceContainer:
         if cls._instance is None:
             from repositories.plaid_item import get_plaid_item_repository
             from repositories.webhook_event import get_webhook_event_repository
+            from services.analytics.computation_manager import get_spending_computation_manager
             from services.recurring import get_recurring_sync_service
             from services.transaction_sync import get_transaction_sync_service
 
@@ -277,11 +306,13 @@ class WebhookServiceContainer:
             plaid_item_repo = get_plaid_item_repository()
             transaction_sync_service = get_transaction_sync_service()
             recurring_sync_service = get_recurring_sync_service()
+            spending_computation_manager = get_spending_computation_manager()
             cls._instance = WebhookService(
                 webhook_event_repo,
                 plaid_item_repo,
                 transaction_sync_service,
                 recurring_sync_service,
+                spending_computation_manager,
             )
         return cls._instance
 

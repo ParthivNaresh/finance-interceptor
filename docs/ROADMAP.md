@@ -62,7 +62,7 @@
 
 ---
 
-## Phase 4: Recurring Detection Engine (Using Plaid API)
+## Phase 4: Recurring Detection Engine (Using Plaid API) ✅
 
 ### 4.1 Database & Models ✅
 - [x] Create enum types (StreamType, FrequencyType, StreamStatus, AlertType, etc.)
@@ -93,62 +93,149 @@
 - [x] Hooks (useRecurring, useAlerts)
 - [x] Recurring list screen
 - [x] Alerts screen
+- [x] Recurring detail screen with transaction history
 
 **Deliverable:** System automatically detects subscriptions and price changes using Plaid's Recurring Transactions API. ✅
 
 ---
 
-## Phase 5: Alert System
+## Phase 5: Analytics Engine
 
-### 5.1 Alert Infrastructure
+Pre-computed, rule-based analytics stored in Supabase. Provides structured insights for users and future AI agents without LLM costs.
+
+### 5.1 Database Schema ✅
+- [x] `spending_periods` table (daily/weekly/monthly/yearly rollups)
+- [x] `category_spending` table (spending by category per period)
+- [x] `merchant_spending` table (spending by merchant per month)
+- [x] `merchant_stats` table (lifetime merchant statistics)
+- [x] `cash_flow_metrics` table (income, expenses, net flow, savings rate)
+- [x] `lifestyle_baselines` table (baseline spending per category)
+- [x] `lifestyle_creep_scores` table (monthly creep tracking)
+- [x] `transaction_anomalies` table (flagged unusual transactions)
+- [x] `income_sources` table (detected income streams)
+- [x] `analytics_computation_log` table (computation state tracking)
+- [x] New enum types (period_type, baseline_type, anomaly_type, etc.)
+- [x] Added `is_internal_transfer` to transactions table
+
+### 5.2 Spending Aggregations
+- [ ] Monthly spend by category
+- [ ] Monthly spend by merchant
+- [ ] Month-over-month deltas (% change)
+- [ ] Rolling averages (3mo, 6mo, 12mo)
+- [ ] Incremental recomputation on new transactions
+
+### 5.3 Merchant Intelligence
+- [ ] Transaction frequency per merchant
+- [ ] Average transaction size per merchant
+- [ ] First/last transaction dates
+- [ ] Total lifetime spend per merchant
+- [ ] Merchant categorization cleanup
+
+### 5.4 Cash Flow Analysis
+- [ ] Income detection (large recurring inflows)
+- [ ] Monthly net cash flow
+- [ ] Burn rate calculation (days until $0)
+- [ ] Savings rate ((income - expenses) / income)
+- [ ] Projected balance forecasting
+
+### 5.5 Anomaly Detection (Rule-Based)
+- [ ] Unusually large transactions (>2σ from merchant mean)
+- [ ] New merchant flags (first-time spend)
+- [ ] Category spikes (>50% above rolling average)
+- [ ] Duplicate transaction detection
+
+### 5.6 Lifestyle Creep Scoring
+- [ ] Establish baseline spending (first 3 months per category)
+- [ ] Current vs baseline delta calculation
+- [ ] Creep score per category
+- [ ] Overall lifestyle creep index
+
+### 5.7 API Endpoints
+- [ ] GET /api/analytics/spending - Spending summaries
+- [ ] GET /api/analytics/merchants - Merchant intelligence
+- [ ] GET /api/analytics/cash-flow - Cash flow metrics
+- [ ] GET /api/analytics/anomalies - Flagged transactions
+- [ ] GET /api/analytics/lifestyle-creep - Creep scores
+
+### 5.8 Mobile App - Insights Dashboard
+- [ ] Spending breakdown by category (charts)
+- [ ] Top merchants list
+- [ ] Cash flow summary card
+- [ ] Anomaly notifications
+- [ ] Lifestyle creep indicators
+
+**Deliverable:** Pre-computed financial insights stored in Supabase, accessible via API and displayed in app.
+
+---
+
+## Phase 6: Push Notifications & Alerts
+
+### 6.1 Alert Infrastructure
 - [ ] Push notification setup (Expo)
 - [ ] Backend notification service
 - [ ] User notification preferences
 
-### 5.2 Mobile App - Pulse Feed
-- [ ] Alert feed screen (replaces Home as primary)
+### 6.2 Mobile App - Alert Feed
+- [ ] Alert feed screen
 - [ ] Alert cards with actions (dismiss, view details)
 - [ ] Alert history
+- [ ] Badge counts on tab bar
 
-**Deliverable:** Users receive push notifications for price changes.
+### 6.3 Smart Alerts (Using Analytics)
+- [ ] Price increase alerts (existing)
+- [ ] Spending spike alerts (from anomaly detection)
+- [ ] Lifestyle creep warnings
+- [ ] Low balance warnings
+- [ ] Unusual merchant alerts
+
+**Deliverable:** Users receive push notifications for price changes, spending anomalies, and financial insights.
 
 ---
 
-## Phase 6: Agentic Features
+## Phase 7: Agentic Features
 
-### 6.1 AI Assistant
+### 7.1 Merchant Normalization
+- [ ] Fallback normalization when Plaid's merchant_name is null
+- [ ] Merchant entity resolution (deduplicate similar merchants)
+- [ ] User-defined merchant aliases
+- [ ] Merchant logo/icon fallback service
+
+### 7.2 AI Assistant
 - [ ] Chat interface (FAB button)
 - [ ] Natural language queries ("How much did I spend on Uber last month?")
 - [ ] LLM integration (OpenAI/Anthropic)
+- [ ] Context injection from analytics layer
 
-### 6.2 Proactive Insights
-- [ ] Lifestyle creep detection (baseline spending increase)
-- [ ] Spending anomaly detection
-- [ ] Budget recommendations
+### 7.3 Proactive Insights
+- [ ] AI-generated spending summaries
+- [ ] Personalized budget recommendations
+- [ ] Subscription optimization suggestions
+- [ ] Savings opportunity detection
 
-**Deliverable:** AI-powered financial assistant.
+**Deliverable:** AI-powered financial assistant leveraging pre-computed analytics.
 
 ---
 
-## Phase 7: Production Hardening
+## Phase 8: Production Hardening
 
-### 7.1 Security
+### 8.1 Security
 - [ ] Rate limiting
 - [ ] Input validation audit
 - [ ] Security headers
 - [ ] Penetration testing
 
-### 7.2 Performance
+### 8.2 Performance
 - [ ] Database indexing optimization
 - [ ] API response caching
 - [ ] Background job queue (Celery/Temporal)
+- [ ] Analytics computation scheduling
 
-### 7.3 Monitoring
+### 8.3 Monitoring
 - [ ] Error tracking (Sentry)
 - [ ] APM (Application Performance Monitoring)
 - [ ] Logging infrastructure
 
-### 7.4 Deployment
+### 8.4 Deployment
 - [ ] CI/CD pipeline
 - [ ] Staging environment
 - [ ] Production infrastructure
@@ -190,6 +277,7 @@ Plaid's Investments product uses a separate API (`/investments/transactions/get`
 | Phase 2 - Data Sync | ✅ Complete |
 | Phase 3 - Core Features | ✅ Complete |
 | Phase 4 - Recurring Detection | ✅ Complete |
-| Phase 5 - Alerts | Not Started |
-| Phase 6 - Agentic | Not Started |
-| Phase 7 - Production | Not Started |
+| Phase 5 - Analytics Engine | Not Started |
+| Phase 6 - Push Notifications | Not Started |
+| Phase 7 - Agentic | Not Started |
+| Phase 8 - Production | Not Started |
