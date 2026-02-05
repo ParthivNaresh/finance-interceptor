@@ -6,6 +6,12 @@ from services.analytics.computation_manager import (
     SpendingComputationManagerContainer,
     get_spending_computation_manager,
 )
+from services.analytics.merchant_stats_aggregator import (
+    COMPUTATION_TYPE_MERCHANT_STATS,
+    MerchantStatsAggregator,
+    MerchantStatsAggregatorContainer,
+    get_merchant_stats_aggregator,
+)
 from services.analytics.period_calculator import (
     get_current_period_start,
     get_months_between,
@@ -29,9 +35,12 @@ from services.analytics.transfer_detector import (
 )
 
 __all__ = [
+    "COMPUTATION_TYPE_MERCHANT_STATS",
     "COMPUTATION_TYPE_SPENDING",
     "AggregationResult",
     "ComputationResult",
+    "MerchantStatsAggregator",
+    "MerchantStatsAggregatorContainer",
     "SpendingAggregator",
     "SpendingAggregatorContainer",
     "SpendingComputationError",
@@ -40,6 +49,7 @@ __all__ = [
     "TransferDetector",
     "TransferDetectorContainer",
     "get_current_period_start",
+    "get_merchant_stats_aggregator",
     "get_months_between",
     "get_next_period_start",
     "get_period_bounds",

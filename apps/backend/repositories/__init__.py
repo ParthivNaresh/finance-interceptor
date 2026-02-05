@@ -15,6 +15,11 @@ from repositories.merchant_spending import (
     MerchantSpendingRepositoryContainer,
     get_merchant_spending_repository,
 )
+from repositories.merchant_stats import (
+    MerchantStatsRepository,
+    MerchantStatsRepositoryContainer,
+    get_merchant_stats_repository,
+)
 from repositories.plaid_item import PlaidItemRepository, PlaidItemRepositoryContainer, get_plaid_item_repository
 from repositories.recurring_stream import (
     RecurringStreamRepository,
@@ -48,6 +53,8 @@ __all__ = [
     "CategorySpendingRepositoryContainer",
     "MerchantSpendingRepository",
     "MerchantSpendingRepositoryContainer",
+    "MerchantStatsRepository",
+    "MerchantStatsRepositoryContainer",
     "PlaidItemRepository",
     "PlaidItemRepositoryContainer",
     "RecurringStreamRepository",
@@ -63,6 +70,7 @@ __all__ = [
     "get_analytics_computation_log_repository",
     "get_category_spending_repository",
     "get_merchant_spending_repository",
+    "get_merchant_stats_repository",
     "get_plaid_item_repository",
     "get_recurring_stream_repository",
     "get_spending_period_repository",

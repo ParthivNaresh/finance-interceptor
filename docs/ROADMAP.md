@@ -1,10 +1,11 @@
 # Finance Interceptor - Development Roadmap
 
-## Current Status: Phase 4 Complete ✅
+## Current Status: Phase 5.2 In Progress
 - ✅ Phase 1 Complete (Auth + Secrets Management)
 - ✅ Phase 2 Complete (Webhooks + Transaction Sync)
 - ✅ Phase 3 Complete (Core Features)
 - ✅ Phase 4 Complete (Recurring Detection Engine)
+- 🔄 Phase 5 In Progress (Analytics Engine)
 
 ---
 
@@ -31,69 +32,17 @@
 ## Phase 3: Core Features ✅
 
 ### 3.1 Account Management API ✅
-- [x] GET /api/accounts - List user's connected accounts
-- [x] GET /api/accounts/:id - Get account details
-- [x] POST /api/accounts/:id/sync - Force manual sync
-- [x] DELETE /api/accounts/plaid-items/:id - Disconnect a plaid item
-
 ### 3.2 Transaction API ✅
-- [x] GET /api/transactions - List transactions (paginated, filtered)
-- [x] GET /api/transactions/:id - Get transaction details
-- [x] Implement date range filtering
-- [x] Implement category filtering
-- [x] Implement search by merchant name
-
 ### 3.3 Mobile App - Account Views ✅
-- [x] Account list screen with total balance
-- [x] Account cards grouped by institution
-- [x] Transaction list screen with infinite scroll
-- [x] Transaction detail screen
-- [x] Pull-to-refresh functionality
-- [x] Loading and empty states
-
 ### 3.4 UI Redesign ✅
-- [x] Dark theme with glassmorphism
-- [x] i18n internationalization support
-- [x] Simplified navigation (Activity | Home)
-- [x] Profile menu (Accounts, Settings, Sign Out)
-- [x] Net Worth calculation (assets - liabilities)
 
 **Deliverable:** Users can view all their accounts and transactions in the app. ✅
 
 ---
 
-## Phase 4: Recurring Detection Engine (Using Plaid API) ✅
+## Phase 4: Recurring Detection Engine ✅
 
-### 4.1 Database & Models ✅
-- [x] Create enum types (StreamType, FrequencyType, StreamStatus, AlertType, etc.)
-- [x] Create recurring_streams table
-- [x] Create alerts table (new schema)
-- [x] Create Pydantic models
-- [x] Update schema.sql
-- [x] Create migration file
-
-### 4.2 Repositories ✅
-- [x] RecurringStreamRepository
-- [x] AlertRepository
-
-### 4.3 Services ✅
-- [x] Add `get_recurring_transactions()` to PlaidService
-- [x] Create PriceSensitivityService (category-aware thresholds)
-- [x] Create AlertDetectionService
-- [x] Create RecurringSyncService
-
-### 4.4 API & Webhooks ✅
-- [x] Create recurring router
-- [x] Create alerts router
-- [x] Add RECURRING_TRANSACTIONS_UPDATE webhook handler
-
-### 4.5 Mobile App ✅
-- [x] TypeScript types
-- [x] API services
-- [x] Hooks (useRecurring, useAlerts)
-- [x] Recurring list screen
-- [x] Alerts screen
-- [x] Recurring detail screen with transaction history
+### 4.1-4.5 Complete ✅
 
 **Deliverable:** System automatically detects subscriptions and price changes using Plaid's Recurring Transactions API. ✅
 
@@ -116,13 +65,32 @@ Pre-computed, rule-based analytics stored in Supabase. Provides structured insig
 - [x] `analytics_computation_log` table (computation state tracking)
 - [x] New enum types (period_type, baseline_type, anomaly_type, etc.)
 - [x] Added `is_internal_transfer` to transactions table
+- [x] Migration: `docs/migrations/005_analytics_engine.sql`
 
-### 5.2 Spending Aggregations
-- [ ] Monthly spend by category
-- [ ] Monthly spend by merchant
-- [ ] Month-over-month deltas (% change)
-- [ ] Rolling averages (3mo, 6mo, 12mo)
-- [ ] Incremental recomputation on new transactions
+### 5.2 Spending Aggregations ✅
+- [x] Backend models (`models/analytics.py`)
+- [x] Repositories (spending_period, category_spending, merchant_spending, analytics_log)
+- [x] Services (`services/analytics/` package)
+  - `period_calculator.py` - Date/period utilities
+  - `transfer_detector.py` - Internal transfer detection
+  - `spending_aggregator.py` - Metrics computation
+  - `computation_manager.py` - Orchestration
+- [x] API Router (`routers/analytics.py`)
+  - GET /api/analytics/spending - Spending summaries with MoM changes
+  - GET /api/analytics/spending/current - Current period details
+  - GET /api/analytics/spending/categories - Category breakdown
+  - GET /api/analytics/spending/merchants - Merchant breakdown
+  - GET /api/analytics/spending/category/{category} - Category history
+  - GET /api/analytics/spending/merchant/{merchant_name} - Merchant history
+  - POST /api/analytics/compute - Trigger computation
+- [x] Webhook integration (auto-compute after transaction sync)
+- [x] Mobile types (`types/analytics.ts`)
+- [x] Mobile API service (`services/api/analytics.ts`)
+- [x] Mobile hooks (`hooks/useAnalytics.ts`)
+- [x] Mobile components (`components/analytics/`)
+  - SpendingCard, ChangeIndicator, CategoryItem, MerchantItem, SectionHeader
+- [x] Mobile Insights screen (`app/(tabs)/insights.tsx`)
+- [x] Tab navigation updated with Insights tab
 
 ### 5.3 Merchant Intelligence
 - [ ] Transaction frequency per merchant
@@ -150,19 +118,11 @@ Pre-computed, rule-based analytics stored in Supabase. Provides structured insig
 - [ ] Creep score per category
 - [ ] Overall lifestyle creep index
 
-### 5.7 API Endpoints
-- [ ] GET /api/analytics/spending - Spending summaries
-- [ ] GET /api/analytics/merchants - Merchant intelligence
-- [ ] GET /api/analytics/cash-flow - Cash flow metrics
-- [ ] GET /api/analytics/anomalies - Flagged transactions
-- [ ] GET /api/analytics/lifestyle-creep - Creep scores
-
-### 5.8 Mobile App - Insights Dashboard
-- [ ] Spending breakdown by category (charts)
-- [ ] Top merchants list
-- [ ] Cash flow summary card
-- [ ] Anomaly notifications
-- [ ] Lifestyle creep indicators
+### 5.7 Mobile App - Insights Dashboard Enhancements
+- [ ] Spending trend chart (bar chart over time)
+- [ ] Category detail screens
+- [ ] Merchant detail screens
+- [ ] Period selector component
 
 **Deliverable:** Pre-computed financial insights stored in Supabase, accessible via API and displayed in app.
 
@@ -247,20 +207,10 @@ Pre-computed, rule-based analytics stored in Supabase. Provides structured insig
 ## Future Considerations
 
 ### Investment Portfolio Support
-Plaid's Investments product uses a separate API (`/investments/transactions/get`, `/investments/holdings/get`) with a different schema than regular transactions. This would require:
-
-- [ ] Add `investments` to Plaid products in link token creation
-- [ ] New database tables: `securities`, `holdings`, `investment_transactions`
-- [ ] New API endpoints: `/api/investments/holdings`, `/api/investments/transactions`
-- [ ] New mobile screens: Portfolio view, Investment transaction history
-- [ ] Holdings breakdown by asset class
-- [ ] Performance tracking (gains/losses)
-
-**Note:** Investment account balances are already included in Net Worth calculation. This feature would add transaction-level detail for investment accounts (buy/sell/dividend activity).
+Plaid's Investments product uses a separate API with a different schema. Would require new tables, endpoints, and screens.
 
 ### Additional Future Features
 - [ ] Bill calendar view
-- [ ] Spending categories breakdown
 - [ ] Multi-currency support
 - [ ] Export to CSV/PDF
 - [ ] Shared accounts (family/couples)
@@ -277,7 +227,7 @@ Plaid's Investments product uses a separate API (`/investments/transactions/get`
 | Phase 2 - Data Sync | ✅ Complete |
 | Phase 3 - Core Features | ✅ Complete |
 | Phase 4 - Recurring Detection | ✅ Complete |
-| Phase 5 - Analytics Engine | Not Started |
+| Phase 5 - Analytics Engine | 🔄 In Progress (5.2 done) |
 | Phase 6 - Push Notifications | Not Started |
 | Phase 7 - Agentic | Not Started |
 | Phase 8 - Production | Not Started |

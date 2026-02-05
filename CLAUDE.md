@@ -1,117 +1,253 @@
-# Finance Interceptor - Development Guidelines
+# Finance Interceptor - AI Agent Guidelines
 
-## Architecture
+## Quick Start
 
-**Monorepo Structure:**
-- `apps/mobile` - Expo React Native app (TypeScript)
-- `apps/backend` - FastAPI server (Python)
-- `docs/` - Architecture diagrams, schema, roadmap
+**Read these files first:**
+1. `docs/ROADMAP.md` - Current phase, completed work, next tasks
+2. `docs/schema.sql` - Complete database schema
+3. This file - Architecture and patterns
 
-## Database
+## Project Overview
 
-**Supabase (PostgreSQL):**
-- Schema defined in `docs/schema.sql`
-- Row Level Security (RLS) enabled on all tables
-- Auto-creates user profile on signup via trigger
+Personal finance app that detects subscription price changes and lifestyle creep. Built with:
+- **Mobile:** Expo React Native (TypeScript)
+- **Backend:** FastAPI (Python)
+- **Database:** Supabase (PostgreSQL with RLS)
+- **Banking:** Plaid API
 
-**Key Tables:**
-- `users` - User profiles (extends auth.users)
-- `plaid_items` - Connected bank accounts
-- `accounts` - Bank accounts from Plaid
-- `transactions` - Transaction history
-- `recurring_transactions` - Detected subscriptions
-- `alerts` - User notifications
+## Monorepo Structure
 
-## Mobile App (apps/mobile)
-
-### Running
-```bash
-just mobile-start    # Start Metro bundler
-just mobile-ios      # Build and run on iOS
+```
+finance-interceptor/
+├── apps/
+│   ├── mobile/          # Expo React Native app
+│   └── backend/         # FastAPI server
+├── docs/
+│   ├── ROADMAP.md       # Development phases
+│   ├── schema.sql       # Database schema
+│   └── migrations/      # SQL migration files
+└── justfile             # Task runner commands
 ```
 
-### Key Patterns
-
-**File-based routing** via expo-router:
-- `app/(auth)/` - Auth screens (login, register)
-- `app/(tabs)/` - Protected tab screens
-- `app/_layout.tsx` - Root layout with auth routing
-
-**Directory structure:**
-- `components/` - UI components
-- `config/` - App configuration (includes Supabase URL/key)
-- `contexts/` - React contexts (AuthContext)
-- `hooks/` - Custom React hooks (useAuth, usePlaidLink)
-- `services/` - API and Supabase services
-- `types/` - TypeScript interfaces
-
-**Authentication:**
-- `AuthProvider` wraps the app in `_layout.tsx`
-- `useAuth()` hook provides: user, session, isAuthenticated, signIn, signUp, signOut
-- Root layout auto-redirects based on auth state
-- API client automatically includes JWT in requests
-
-**Plaid integration:**
-- Use `usePlaidLink` hook from `@/hooks`
-- API calls via `plaidApi` from `@/services`
-
-### Path Aliases
-- `@/` maps to project root
+---
 
 ## Backend (apps/backend)
-
-### Running
-```bash
-just backend-start   # Handles SSL certs automatically
-```
-
-Or manually:
-```bash
-cd apps/backend
-source .venv/bin/activate
-export SSL_CERT_FILE=$(.venv/bin/python -c "import certifi; print(certifi.where())")
-export REQUESTS_CA_BUNDLE=$SSL_CERT_FILE
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
 
 ### Directory Structure
 ```
 apps/backend/
-├── config.py           # Settings (env vars)
-├── main.py             # FastAPI app factory
-├── models/             # Pydantic models
-│   ├── auth.py         # AuthenticatedUser model
-│   ├── common.py       # Shared models (HealthResponse)
-│   └── plaid.py        # Plaid request/response models
-├── routers/            # API endpoints
+├── main.py              # FastAPI app factory
+├── config.py            # Settings from env vars
+├── models/              # Pydantic models
+│   ├── enums.py         # All enum types
+│   ├── auth.py          # AuthenticatedUser
+│   ├── plaid.py         # Plaid request/response
+│   ├── transaction.py   # Transaction models
+│   ├── recurring.py     # Recurring stream models
+│   ├── webhook.py       # Webhook models
+│   └── analytics.py     # Analytics models
+├── repositories/        # Database access layer
+│   ├── base.py          # BaseRepository class
+│   ├── plaid_item.py
+│   ├── account.py
+│   ├── transaction.py
+│   ├── recurring_stream.py
+│   ├── alert.py
+│   ├── spending_period.py
+│   ├── category_spending.py
+│   ├── merchant_spending.py
+│   └── analytics_log.py
+├── services/            # Business logic
+│   ├── plaid.py         # Plaid API wrapper
+│   ├── database.py      # Supabase client
+│   ├── auth.py          # Token validation
+│   ├── transaction_sync.py
+│   ├── recurring.py
+│   ├── alert_detection.py
+│   ├── webhook.py
+│   └── analytics/       # Analytics package
+│       ├── period_calculator.py
+│       ├── transfer_detector.py
+│       ├── spending_aggregator.py
+│       └── computation_manager.py
+├── routers/             # API endpoints
 │   ├── health.py
-│   └── plaid.py
-├── services/           # Business logic
-│   ├── auth.py         # Token validation via Supabase
-│   ├── database.py     # Supabase client wrapper
-│   └── plaid.py        # Plaid API wrapper
-└── middleware/         # FastAPI middleware
-    └── auth.py         # get_current_user, get_optional_user
+│   ├── plaid.py
+│   ├── accounts.py
+│   ├── transactions.py
+│   ├── recurring.py
+│   ├── alerts.py
+│   ├── webhooks.py
+│   └── analytics.py
+└── middleware/
+    └── auth.py          # get_current_user dependency
 ```
 
 ### Key Patterns
 
 **Service Container Pattern:**
-- Services use container classes for singleton management
-- Example: `PlaidServiceContainer.get()`, `DatabaseServiceContainer.get()`
-- Initialized in `lifespan` context, reset on shutdown
+```python
+class PlaidServiceContainer:
+    _instance: PlaidService | None = None
+    
+    @classmethod
+    def get(cls) -> PlaidService:
+        if cls._instance is None:
+            cls._instance = PlaidService(...)
+        return cls._instance
+```
+
+**Repository Pattern:**
+- All DB access through repository classes
+- Repositories inherit from `BaseRepository`
+- Use Supabase client, not raw SQL
 
 **Dependency Injection:**
-- Use `Annotated[Service, Depends(get_service)]` pattern
-- Avoids B008 lint error (function call in default args)
+```python
+CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 
-**Auth Middleware:**
-- `get_current_user` - Requires valid JWT, returns `AuthenticatedUser`
-- `get_optional_user` - Returns `AuthenticatedUser | None`
-- Token validation done via Supabase `auth.get_user(token)` - no JWT secret needed
+@router.get("/endpoint")
+async def endpoint(user: CurrentUser):
+    ...
+```
 
-### API Documentation
-Available at http://localhost:8000/docs when server is running.
+**Auth Flow:**
+- JWT token in `Authorization: Bearer <token>` header
+- Validated via Supabase `auth.get_user(token)`
+- Returns `AuthenticatedUser` with `id` and `email`
+
+### Running Backend
+```bash
+just backend-start
+# Or manually:
+cd apps/backend && poetry run uvicorn main:app --reload
+```
+
+### API Docs
+http://localhost:8000/docs
+
+---
+
+## Mobile App (apps/mobile)
+
+### Directory Structure
+```
+apps/mobile/
+├── app/                 # Expo Router screens
+│   ├── (auth)/          # Login, register
+│   ├── (tabs)/          # Main tab screens
+│   │   ├── activity.tsx
+│   │   ├── index.tsx    # Home
+│   │   ├── insights.tsx # Analytics dashboard
+│   │   └── recurring.tsx
+│   ├── alerts.tsx
+│   ├── recurring/[id].tsx
+│   └── transactions/[id].tsx
+├── components/
+│   ├── analytics/       # SpendingCard, CategoryItem, etc.
+│   ├── recurring/
+│   ├── alerts/
+│   ├── accounts/
+│   ├── glass/           # Glassmorphism components
+│   └── index.ts         # Barrel exports
+├── hooks/
+│   ├── useAuth.ts
+│   ├── useAccounts.ts
+│   ├── useTransactions.ts
+│   ├── useRecurring.ts
+│   ├── useAlerts.ts
+│   ├── useAnalytics.ts
+│   └── usePlaidLink.ts
+├── services/
+│   ├── api/             # API client and endpoints
+│   │   ├── client.ts    # Base API client
+│   │   ├── accounts.ts
+│   │   ├── transactions.ts
+│   │   ├── recurring.ts
+│   │   ├── alerts.ts
+│   │   └── analytics.ts
+│   └── supabase/        # Supabase client
+├── types/               # TypeScript interfaces
+│   ├── account.ts
+│   ├── transaction.ts
+│   ├── recurring.ts
+│   ├── analytics.ts
+│   └── index.ts         # Barrel exports
+├── styles/              # Design tokens
+│   ├── colors.ts
+│   ├── typography.ts
+│   ├── spacing.ts
+│   └── glass.ts
+├── i18n/                # Internationalization
+│   └── locales/en.ts
+└── utils/               # Helper functions
+```
+
+### Key Patterns
+
+**Hook Pattern:**
+```typescript
+export function useSpendingSummary(periodType: PeriodType = 'monthly') {
+  const [state, setState] = useState<State>({ ... });
+  
+  const fetchData = useCallback(async (isRefresh = false) => {
+    // Fetch logic
+  }, [periodType]);
+  
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
+  
+  return { ...state, refresh, derivedData };
+}
+```
+
+**API Service Pattern:**
+```typescript
+export const analyticsApi = {
+  getCurrentSpending: (periodType: PeriodType) => 
+    apiClient.get<SpendingSummaryResponse>(`/api/analytics/spending/current?period_type=${periodType}`),
+};
+```
+
+**Component Pattern:**
+- Functional components with TypeScript interfaces
+- Styles via `StyleSheet.create()`
+- Use design tokens from `@/styles`
+
+### Path Aliases
+- `@/` maps to project root
+
+### Running Mobile
+```bash
+just mobile-start    # Start Metro
+just mobile-ios      # Run on iOS simulator
+```
+
+---
+
+## Database
+
+### Key Tables
+| Table | Purpose |
+|-------|---------|
+| `users` | User profiles (extends auth.users) |
+| `plaid_items` | Connected bank accounts |
+| `accounts` | Bank accounts from Plaid |
+| `transactions` | Transaction history |
+| `recurring_streams` | Detected subscriptions |
+| `alerts` | User notifications |
+| `spending_periods` | Pre-computed spending rollups |
+| `category_spending` | Spending by category per period |
+| `merchant_spending` | Spending by merchant per period |
+
+### RLS (Row Level Security)
+All tables have RLS policies. Users can only access their own data.
+
+### Migrations
+Located in `docs/migrations/`. Run via Supabase dashboard SQL editor.
+
+---
 
 ## Environment Variables
 
@@ -120,61 +256,92 @@ Available at http://localhost:8000/docs when server is running.
 PLAID_CLIENT_ID=xxx
 PLAID_SECRET=xxx
 PLAID_ENVIRONMENT=sandbox
-
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_ANON_KEY=xxx
 SUPABASE_SERVICE_ROLE_KEY=xxx
+ENCRYPTION_KEY=xxx
 ```
 
-**Mobile (app.json extra):**
-```json
-{
-  "extra": {
-    "supabaseUrl": "https://xxx.supabase.co",
-    "supabaseAnonKey": "xxx"
-  }
-}
-```
+**Mobile (config/supabase.ts):**
+Supabase URL and anon key are in config file.
 
-## Testing Plaid
+---
 
-Sandbox credentials:
+## Testing
+
+### Plaid Sandbox
 - Bank: Search "Platypus"
 - Username: `user_good`
 - Password: `pass_good`
+
+### Backend API Testing
+```bash
+# Get JWT token
+curl -X POST "https://YOUR_PROJECT.supabase.co/auth/v1/token?grant_type=password" \
+  -H "apikey: YOUR_ANON_KEY" \
+  -d '{"email": "test@example.com", "password": "password"}'
+
+# Use token
+curl "http://localhost:8000/api/analytics/spending/current" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+---
 
 ## Code Quality
 
 **Linting:**
 ```bash
-just lint        # Lint all code
-just lint-fix    # Auto-fix issues
+just lint        # Lint all
+just lint-fix    # Auto-fix
 just check       # Lint + typecheck
 ```
 
-**Python (Ruff + mypy):**
-- Strict type checking enabled
-- Pydantic models for all request/response types
+**Python:** Ruff + mypy (strict)
+**TypeScript:** ESLint (strict, no `any`)
 
-**TypeScript (ESLint):**
-- Strict mode enabled
-- No `any` types allowed
+---
 
-## Task Runner
+## Common Tasks
 
-Use `just` for all commands:
-```bash
-just                  # Show all commands
-just backend-start    # Start backend
-just mobile-start     # Start Metro
-just mobile-ios       # Run iOS simulator
-just lint             # Lint everything
-just check            # Lint + typecheck
-```
+### Adding a New API Endpoint
+1. Create/update Pydantic models in `models/`
+2. Create/update repository in `repositories/`
+3. Create/update service in `services/`
+4. Add router in `routers/`
+5. Register router in `routers/__init__.py`
 
-## Key Files
+### Adding a New Mobile Screen
+1. Create types in `types/`
+2. Create API service in `services/api/`
+3. Create hook in `hooks/`
+4. Create components in `components/`
+5. Create screen in `app/`
+6. Update navigation if needed
 
-- `docs/ROADMAP.md` - Development phases and tasks
-- `docs/schema.sql` - Database schema
-- `docs/architecture.puml` - Sequence diagrams
-- `justfile` - Task runner commands
+### Adding a Database Table
+1. Add to `docs/schema.sql`
+2. Create migration in `docs/migrations/`
+3. Run migration in Supabase
+4. Create repository
+5. Create Pydantic models
+
+---
+
+## Current Work (Phase 5)
+
+Analytics Engine - pre-computed spending insights.
+
+**Completed:**
+- Database schema (10 new tables)
+- Backend services for spending aggregation
+- API endpoints for spending data
+- Mobile Insights screen with basic UI
+
+**Next:**
+- Spending trend chart component
+- Merchant intelligence
+- Cash flow analysis
+- Anomaly detection
+
+See `docs/ROADMAP.md` for full task list.

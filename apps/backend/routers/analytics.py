@@ -1,28 +1,39 @@
-from datetime import date
+from collections import defaultdict
+from datetime import date, timedelta
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from middleware.auth import get_current_user
 from models.analytics import (
     CategoryBreakdownResponse,
+    CategoryDetailResponse,
+    CategorySpendingHistoryItem,
     CategorySpendingSummary,
     ComputationResultResponse,
     MerchantBreakdownResponse,
+    MerchantSpendingHistoryItem,
     MerchantSpendingSummary,
+    MerchantStatsComputationResult,
+    MerchantStatsListResponse,
+    MerchantStatsResponse,
     SpendingPeriodWithDelta,
     SpendingSummaryListResponse,
     SpendingSummaryResponse,
+    SubcategorySpendingSummary,
 )
 from models.auth import AuthenticatedUser
 from models.enums import PeriodType
 from repositories.category_spending import CategorySpendingRepository, get_category_spending_repository
 from repositories.merchant_spending import MerchantSpendingRepository, get_merchant_spending_repository
+from repositories.merchant_stats import MerchantStatsRepository, get_merchant_stats_repository
 from repositories.spending_period import SpendingPeriodRepository, get_spending_period_repository
+from repositories.transaction import TransactionRepository, get_transaction_repository
 from services.analytics import get_spending_computation_manager
 from services.analytics.computation_manager import SpendingComputationManager
+from services.analytics.merchant_stats_aggregator import MerchantStatsAggregator, get_merchant_stats_aggregator
 from services.analytics.period_calculator import (
     get_current_period_start,
     get_period_bounds,
@@ -35,7 +46,10 @@ CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
 SpendingPeriodRepoDep = Annotated[SpendingPeriodRepository, Depends(get_spending_period_repository)]
 CategorySpendingRepoDep = Annotated[CategorySpendingRepository, Depends(get_category_spending_repository)]
 MerchantSpendingRepoDep = Annotated[MerchantSpendingRepository, Depends(get_merchant_spending_repository)]
+MerchantStatsRepoDep = Annotated[MerchantStatsRepository, Depends(get_merchant_stats_repository)]
+TransactionRepoDep = Annotated[TransactionRepository, Depends(get_transaction_repository)]
 ComputationManagerDep = Annotated[SpendingComputationManager, Depends(get_spending_computation_manager)]
+MerchantStatsAggregatorDep = Annotated[MerchantStatsAggregator, Depends(get_merchant_stats_aggregator)]
 
 
 @router.get(
@@ -240,8 +254,8 @@ async def get_merchant_breakdown(
 @router.get(
     "/spending/category/{category}",
     response_model=list[CategorySpendingSummary],
-    summary="Get category history",
-    description="Returns spending history for a specific category",
+    summary="Get category history (legacy)",
+    description="Returns spending history for a specific category (legacy format without period info)",
 )
 async def get_category_history(
     category: str,
@@ -271,8 +285,45 @@ async def get_category_history(
 
 
 @router.get(
+    "/spending/categories/{category_name}/history",
+    response_model=list[CategorySpendingHistoryItem],
+    summary="Get category spending history",
+    description="Returns spending history for a specific category with period information",
+)
+async def get_category_spending_history(
+    category_name: str,
+    current_user: CurrentUserDep,
+    category_spending_repo: CategorySpendingRepoDep,
+    period_type: PeriodType = Query(default=PeriodType.MONTHLY, description="Period granularity"),
+    months: int = Query(default=12, ge=1, le=24, description="Number of months of history"),
+) -> list[CategorySpendingHistoryItem]:
+    history = category_spending_repo.get_category_history(
+        user_id=current_user.id,
+        category_primary=category_name,
+        period_type=period_type,
+        months=months,
+    )
+
+    result: list[CategorySpendingHistoryItem] = []
+    for item in history:
+        period_start = _parse_date(item["period_start"])
+        _, period_end = get_period_bounds(period_start, period_type)
+
+        result.append(CategorySpendingHistoryItem(
+            category_primary=item["category_primary"],
+            period_start=period_start,
+            period_end=period_end,
+            total_amount=Decimal(str(item["total_amount"])),
+            transaction_count=item["transaction_count"],
+            average_transaction=Decimal(str(item["average_transaction"])) if item.get("average_transaction") else None,
+        ))
+
+    return result
+
+
+@router.get(
     "/spending/merchant/{merchant_name}",
-    response_model=list[MerchantSpendingSummary],
+    response_model=list[MerchantSpendingHistoryItem],
     summary="Get merchant history",
     description="Returns spending history for a specific merchant",
 )
@@ -282,7 +333,7 @@ async def get_merchant_history(
     merchant_spending_repo: MerchantSpendingRepoDep,
     period_type: PeriodType = Query(default=PeriodType.MONTHLY, description="Period granularity"),
     months: int = Query(default=12, ge=1, le=24, description="Number of months of history"),
-) -> list[MerchantSpendingSummary]:
+) -> list[MerchantSpendingHistoryItem]:
     history = merchant_spending_repo.get_merchant_history(
         user_id=current_user.id,
         merchant_name=merchant_name,
@@ -290,17 +341,331 @@ async def get_merchant_history(
         months=months,
     )
 
-    return [
-        MerchantSpendingSummary(
+    result: list[MerchantSpendingHistoryItem] = []
+    for item in history:
+        period_start = _parse_date(item["period_start"])
+        _, period_end = get_period_bounds(period_start, period_type)
+
+        result.append(MerchantSpendingHistoryItem(
             merchant_name=item["merchant_name"],
             merchant_id=UUID(item["merchant_id"]) if item.get("merchant_id") else None,
+            period_start=period_start,
+            period_end=period_end,
             total_amount=Decimal(str(item["total_amount"])),
             transaction_count=item["transaction_count"],
             average_transaction=Decimal(str(item["average_transaction"])) if item.get("average_transaction") else None,
-            percentage_of_total=None,
-        )
-        for item in history
-    ]
+        ))
+
+    return result
+
+
+@router.get(
+    "/spending/categories/range",
+    response_model=CategoryBreakdownResponse,
+    summary="Get category breakdown for date range",
+    description="Returns spending breakdown by category for a custom date range (computed from transactions)",
+)
+async def get_category_breakdown_by_range(
+    current_user: CurrentUserDep,
+    transaction_repo: TransactionRepoDep,
+    time_range: Literal["week", "month", "year", "all"] = Query(
+        default="month",
+        description="Time range: week (this week), month (this month), year (this year), all (all time)",
+    ),
+    limit: int = Query(default=20, ge=1, le=50, description="Number of categories to return"),
+) -> CategoryBreakdownResponse:
+    today = date.today()
+
+    if time_range == "week":
+        start_date = today - timedelta(days=today.weekday())
+        end_date = today
+    elif time_range == "month":
+        start_date = today.replace(day=1)
+        end_date = today
+    elif time_range == "year":
+        start_date = today.replace(month=1, day=1)
+        end_date = today
+    else:
+        start_date = None
+        end_date = None
+
+    transactions, _ = transaction_repo.get_by_user_id(
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date,
+        pending=False,
+        limit=10000,
+        offset=0,
+    )
+
+    category_data: dict[str, dict[str, Decimal | int]] = defaultdict(
+        lambda: {"total": Decimal("0"), "count": 0}
+    )
+    total_spending = Decimal("0")
+
+    for txn in transactions:
+        amount = Decimal(str(txn.get("amount", 0)))
+        if amount <= 0:
+            continue
+
+        category = txn.get("personal_finance_category_primary") or "UNCATEGORIZED"
+        category_data[category]["total"] += amount
+        category_data[category]["count"] += 1
+        total_spending += amount
+
+    sorted_categories = sorted(
+        category_data.items(),
+        key=lambda x: x[1]["total"],
+        reverse=True,
+    )[:limit]
+
+    categories: list[CategorySpendingSummary] = []
+    for category_name, data in sorted_categories:
+        amount = data["total"]
+        count = int(data["count"])
+        percentage = (amount / total_spending * 100) if total_spending > 0 else None
+        avg = amount / count if count > 0 else None
+
+        categories.append(CategorySpendingSummary(
+            category_primary=category_name,
+            category_detailed=None,
+            total_amount=amount,
+            transaction_count=count,
+            average_transaction=avg,
+            percentage_of_total=percentage,
+        ))
+
+    period_start = start_date or date(2000, 1, 1)
+    period_end = end_date or today
+
+    return CategoryBreakdownResponse(
+        period_type=PeriodType.MONTHLY,
+        period_start=period_start,
+        period_end=period_end,
+        total_spending=total_spending,
+        categories=categories,
+    )
+
+
+@router.get(
+    "/spending/categories/{category_name}/detail",
+    response_model=CategoryDetailResponse,
+    summary="Get category detail",
+    description="Returns detailed spending for a category including subcategories and top merchants",
+)
+async def get_category_detail(
+    category_name: str,
+    current_user: CurrentUserDep,
+    transaction_repo: TransactionRepoDep,
+    time_range: Literal["week", "month", "year", "all"] = Query(
+        default="month",
+        description="Time range: week (this week), month (this month), year (this year), all (all time)",
+    ),
+    subcategory_limit: int = Query(default=10, ge=1, le=20, description="Number of subcategories to return"),
+    merchant_limit: int = Query(default=5, ge=1, le=20, description="Number of top merchants to return"),
+) -> CategoryDetailResponse:
+    today = date.today()
+
+    if time_range == "week":
+        start_date = today - timedelta(days=today.weekday())
+        end_date = today
+    elif time_range == "month":
+        start_date = today.replace(day=1)
+        end_date = today
+    elif time_range == "year":
+        start_date = today.replace(month=1, day=1)
+        end_date = today
+    else:
+        start_date = None
+        end_date = None
+
+    transactions, _ = transaction_repo.get_by_user_id(
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date,
+        pending=False,
+        limit=10000,
+        offset=0,
+    )
+
+    category_total = Decimal("0")
+    category_count = 0
+    total_all_spending = Decimal("0")
+
+    subcategory_data: dict[str, dict[str, Decimal | int]] = defaultdict(
+        lambda: {"total": Decimal("0"), "count": 0}
+    )
+    merchant_data: dict[str, dict[str, Decimal | int]] = defaultdict(
+        lambda: {"total": Decimal("0"), "count": 0}
+    )
+
+    for txn in transactions:
+        amount = Decimal(str(txn.get("amount", 0)))
+        if amount <= 0:
+            continue
+
+        total_all_spending += amount
+        primary_cat = txn.get("personal_finance_category_primary") or "UNCATEGORIZED"
+
+        if primary_cat == category_name:
+            category_total += amount
+            category_count += 1
+
+            detailed_cat = txn.get("personal_finance_category_detailed") or "Other"
+            subcategory_data[detailed_cat]["total"] += amount
+            subcategory_data[detailed_cat]["count"] += 1
+
+            merchant_name = txn.get("merchant_name") or txn.get("name") or "Unknown"
+            merchant_data[merchant_name]["total"] += amount
+            merchant_data[merchant_name]["count"] += 1
+
+    sorted_subcategories = sorted(
+        subcategory_data.items(),
+        key=lambda x: x[1]["total"],
+        reverse=True,
+    )[:subcategory_limit]
+
+    subcategories: list[SubcategorySpendingSummary] = []
+    for subcat_name, data in sorted_subcategories:
+        amount = data["total"]
+        count = int(data["count"])
+        percentage = (amount / category_total * 100) if category_total > 0 else None
+        avg = amount / count if count > 0 else None
+
+        subcategories.append(SubcategorySpendingSummary(
+            category_detailed=subcat_name,
+            total_amount=amount,
+            transaction_count=count,
+            average_transaction=avg,
+            percentage_of_category=percentage,
+        ))
+
+    sorted_merchants = sorted(
+        merchant_data.items(),
+        key=lambda x: x[1]["total"],
+        reverse=True,
+    )[:merchant_limit]
+
+    top_merchants: list[MerchantSpendingSummary] = []
+    for merchant_name, data in sorted_merchants:
+        amount = data["total"]
+        count = int(data["count"])
+        percentage = (amount / category_total * 100) if category_total > 0 else None
+        avg = amount / count if count > 0 else None
+
+        top_merchants.append(MerchantSpendingSummary(
+            merchant_name=merchant_name,
+            merchant_id=None,
+            total_amount=amount,
+            transaction_count=count,
+            average_transaction=avg,
+            percentage_of_total=percentage,
+        ))
+
+    period_start = start_date or date(2000, 1, 1)
+    period_end = end_date or today
+    avg_transaction = category_total / category_count if category_count > 0 else None
+    percentage_of_total = (category_total / total_all_spending * 100) if total_all_spending > 0 else None
+
+    return CategoryDetailResponse(
+        category_primary=category_name,
+        period_start=period_start,
+        period_end=period_end,
+        total_amount=category_total,
+        transaction_count=category_count,
+        average_transaction=avg_transaction,
+        percentage_of_total_spending=percentage_of_total,
+        subcategories=subcategories,
+        top_merchants=top_merchants,
+    )
+
+
+@router.get(
+    "/spending/merchants/range",
+    response_model=MerchantBreakdownResponse,
+    summary="Get merchant breakdown for date range",
+    description="Returns spending breakdown by merchant for a custom date range (computed from transactions)",
+)
+async def get_merchant_breakdown_by_range(
+    current_user: CurrentUserDep,
+    transaction_repo: TransactionRepoDep,
+    time_range: Literal["week", "month", "year", "all"] = Query(
+        default="month",
+        description="Time range: week (this week), month (this month), year (this year), all (all time)",
+    ),
+    limit: int = Query(default=10, ge=1, le=50, description="Number of merchants to return"),
+) -> MerchantBreakdownResponse:
+    today = date.today()
+
+    if time_range == "week":
+        start_date = today - timedelta(days=today.weekday())
+        end_date = today
+    elif time_range == "month":
+        start_date = today.replace(day=1)
+        end_date = today
+    elif time_range == "year":
+        start_date = today.replace(month=1, day=1)
+        end_date = today
+    else:
+        start_date = None
+        end_date = None
+
+    transactions, _ = transaction_repo.get_by_user_id(
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date,
+        pending=False,
+        limit=10000,
+        offset=0,
+    )
+
+    merchant_data: dict[str, dict[str, Decimal | int]] = defaultdict(
+        lambda: {"total": Decimal("0"), "count": 0}
+    )
+    total_spending = Decimal("0")
+
+    for txn in transactions:
+        amount = Decimal(str(txn.get("amount", 0)))
+        if amount <= 0:
+            continue
+
+        merchant_name = txn.get("merchant_name") or txn.get("name") or "Unknown"
+        merchant_data[merchant_name]["total"] += amount
+        merchant_data[merchant_name]["count"] += 1
+        total_spending += amount
+
+    sorted_merchants = sorted(
+        merchant_data.items(),
+        key=lambda x: x[1]["total"],
+        reverse=True,
+    )[:limit]
+
+    merchants: list[MerchantSpendingSummary] = []
+    for merchant_name, data in sorted_merchants:
+        amount = data["total"]
+        count = int(data["count"])
+        percentage = (amount / total_spending * 100) if total_spending > 0 else None
+        avg = amount / count if count > 0 else None
+
+        merchants.append(MerchantSpendingSummary(
+            merchant_name=merchant_name,
+            merchant_id=None,
+            total_amount=amount,
+            transaction_count=count,
+            average_transaction=avg,
+            percentage_of_total=percentage,
+        ))
+
+    period_start = start_date or date(2000, 1, 1)
+    period_end = end_date or today
+
+    return MerchantBreakdownResponse(
+        period_type=PeriodType.MONTHLY,
+        period_start=period_start,
+        period_end=period_end,
+        total_spending=total_spending,
+        merchants=merchants,
+    )
 
 
 @router.post(
@@ -330,6 +695,129 @@ async def trigger_computation(
     )
 
 
+@router.get(
+    "/merchants/stats",
+    response_model=MerchantStatsListResponse,
+    summary="Get merchant lifetime statistics",
+    description="Returns lifetime statistics for all merchants",
+)
+async def get_merchant_stats(
+    current_user: CurrentUserDep,
+    merchant_stats_repo: MerchantStatsRepoDep,
+    sort_by: Literal["spend", "frequency", "recent"] = Query(
+        default="spend",
+        description="Sort by: spend (lifetime), frequency (transaction count), or recent (last transaction)",
+    ),
+    limit: int = Query(default=50, ge=1, le=200, description="Number of merchants to return"),
+    offset: int = Query(default=0, ge=0, description="Offset for pagination"),
+) -> MerchantStatsListResponse:
+    sort_field_map = {
+        "spend": "total_lifetime_spend",
+        "frequency": "total_transaction_count",
+        "recent": "last_transaction_date",
+    }
+    sort_field = sort_field_map[sort_by]
+
+    merchants = merchant_stats_repo.get_all_for_user(
+        user_id=current_user.id,
+        limit=limit,
+        offset=offset,
+        sort_by=sort_field,
+        descending=True,
+    )
+
+    total = merchant_stats_repo.count_for_user(current_user.id)
+
+    return MerchantStatsListResponse(
+        merchants=[_to_merchant_stats_response(m) for m in merchants],
+        total=total,
+    )
+
+
+@router.get(
+    "/merchants/stats/top",
+    response_model=MerchantStatsListResponse,
+    summary="Get top merchants",
+    description="Returns top merchants by spend or frequency",
+)
+async def get_top_merchants(
+    current_user: CurrentUserDep,
+    merchant_stats_repo: MerchantStatsRepoDep,
+    sort_by: Literal["spend", "frequency"] = Query(
+        default="spend",
+        description="Sort by: spend (lifetime) or frequency (transaction count)",
+    ),
+    limit: int = Query(default=10, ge=1, le=50, description="Number of merchants to return"),
+) -> MerchantStatsListResponse:
+    if sort_by == "spend":
+        merchants = merchant_stats_repo.get_top_by_spend(current_user.id, limit)
+    else:
+        merchants = merchant_stats_repo.get_top_by_frequency(current_user.id, limit)
+
+    return MerchantStatsListResponse(
+        merchants=[_to_merchant_stats_response(m) for m in merchants],
+        total=len(merchants),
+    )
+
+
+@router.get(
+    "/merchants/stats/recurring",
+    response_model=MerchantStatsListResponse,
+    summary="Get recurring merchants",
+    description="Returns merchants linked to recurring streams (subscriptions)",
+)
+async def get_recurring_merchants(
+    current_user: CurrentUserDep,
+    merchant_stats_repo: MerchantStatsRepoDep,
+    limit: int = Query(default=50, ge=1, le=100, description="Number of merchants to return"),
+) -> MerchantStatsListResponse:
+    merchants = merchant_stats_repo.get_recurring_merchants(current_user.id, limit)
+
+    return MerchantStatsListResponse(
+        merchants=[_to_merchant_stats_response(m) for m in merchants],
+        total=len(merchants),
+    )
+
+
+@router.get(
+    "/merchants/stats/{merchant_name}",
+    response_model=MerchantStatsResponse,
+    summary="Get merchant detail",
+    description="Returns detailed lifetime statistics for a specific merchant",
+)
+async def get_merchant_detail(
+    merchant_name: str,
+    current_user: CurrentUserDep,
+    merchant_stats_repo: MerchantStatsRepoDep,
+) -> MerchantStatsResponse:
+    merchant = merchant_stats_repo.get_by_merchant_name(current_user.id, merchant_name)
+
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Merchant '{merchant_name}' not found",
+        )
+
+    return _to_merchant_stats_response(merchant)
+
+
+@router.post(
+    "/merchants/stats/compute",
+    response_model=MerchantStatsComputationResult,
+    summary="Trigger merchant stats computation",
+    description="Triggers computation of merchant lifetime statistics",
+)
+async def trigger_merchant_stats_computation(
+    current_user: CurrentUserDep,
+    merchant_stats_aggregator: MerchantStatsAggregatorDep,
+    force_full: bool = Query(default=False, description="Force full recomputation"),
+) -> MerchantStatsComputationResult:
+    return merchant_stats_aggregator.compute_for_user(
+        user_id=current_user.id,
+        full_recompute=force_full,
+    )
+
+
 def _to_spending_period_with_delta(
     period: dict,
     previous_period_outflow: Decimal | None,
@@ -355,6 +843,31 @@ def _to_spending_period_with_delta(
         previous_period_outflow=previous_period_outflow,
         change_amount=change_amount,
         change_percentage=change_percentage,
+    )
+
+
+def _to_merchant_stats_response(merchant: dict) -> MerchantStatsResponse:
+    return MerchantStatsResponse(
+        id=UUID(merchant["id"]),
+        user_id=UUID(merchant["user_id"]),
+        merchant_name=merchant["merchant_name"],
+        merchant_id=UUID(merchant["merchant_id"]) if merchant.get("merchant_id") else None,
+        first_transaction_date=_parse_date(merchant["first_transaction_date"]),
+        last_transaction_date=_parse_date(merchant["last_transaction_date"]),
+        total_lifetime_spend=Decimal(str(merchant["total_lifetime_spend"])),
+        total_transaction_count=merchant["total_transaction_count"],
+        average_transaction_amount=Decimal(str(merchant["average_transaction_amount"])) if merchant.get("average_transaction_amount") else None,
+        median_transaction_amount=Decimal(str(merchant["median_transaction_amount"])) if merchant.get("median_transaction_amount") else None,
+        max_transaction_amount=Decimal(str(merchant["max_transaction_amount"])) if merchant.get("max_transaction_amount") else None,
+        min_transaction_amount=Decimal(str(merchant["min_transaction_amount"])) if merchant.get("min_transaction_amount") else None,
+        average_days_between_transactions=Decimal(str(merchant["average_days_between_transactions"])) if merchant.get("average_days_between_transactions") else None,
+        most_frequent_day_of_week=merchant.get("most_frequent_day_of_week"),
+        most_frequent_hour_of_day=merchant.get("most_frequent_hour_of_day"),
+        is_recurring=merchant.get("is_recurring", False),
+        recurring_stream_id=UUID(merchant["recurring_stream_id"]) if merchant.get("recurring_stream_id") else None,
+        primary_category=merchant.get("primary_category"),
+        created_at=merchant["created_at"],
+        updated_at=merchant["updated_at"],
     )
 
 

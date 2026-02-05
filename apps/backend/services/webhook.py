@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from repositories.plaid_item import PlaidItemRepository
     from repositories.webhook_event import WebhookEventRepository
     from services.analytics.computation_manager import SpendingComputationManager
+    from services.analytics.merchant_stats_aggregator import MerchantStatsAggregator
     from services.recurring import RecurringSyncService
     from services.transaction_sync import TransactionSyncService
 
@@ -48,12 +49,14 @@ class WebhookService:
         transaction_sync_service: TransactionSyncService,
         recurring_sync_service: RecurringSyncService,
         spending_computation_manager: SpendingComputationManager,
+        merchant_stats_aggregator: MerchantStatsAggregator,
     ) -> None:
         self._webhook_event_repo = webhook_event_repo
         self._plaid_item_repo = plaid_item_repo
         self._transaction_sync_service = transaction_sync_service
         self._recurring_sync_service = recurring_sync_service
         self._spending_computation_manager = spending_computation_manager
+        self._merchant_stats_aggregator = merchant_stats_aggregator
 
     def verify_signature(
         self,
@@ -277,14 +280,29 @@ class WebhookService:
         try:
             result = self._spending_computation_manager.compute_current_month(user_id)
             logger.info(
-                "Analytics computation completed for user %s: %d periods, %d transactions",
+                "Spending analytics completed for user %s: %d periods, %d transactions",
                 user_id,
                 result.periods_computed,
                 result.transactions_processed,
             )
         except Exception as e:
             logger.warning(
-                "Analytics computation failed for user %s: %s",
+                "Spending analytics failed for user %s: %s",
+                user_id,
+                str(e),
+            )
+
+        try:
+            stats_result = self._merchant_stats_aggregator.compute_for_user(user_id)
+            logger.info(
+                "Merchant stats completed for user %s: %d merchants, %d transactions",
+                user_id,
+                stats_result.merchants_computed,
+                stats_result.transactions_processed,
+            )
+        except Exception as e:
+            logger.warning(
+                "Merchant stats computation failed for user %s: %s",
                 user_id,
                 str(e),
             )
@@ -299,6 +317,7 @@ class WebhookServiceContainer:
             from repositories.plaid_item import get_plaid_item_repository
             from repositories.webhook_event import get_webhook_event_repository
             from services.analytics.computation_manager import get_spending_computation_manager
+            from services.analytics.merchant_stats_aggregator import get_merchant_stats_aggregator
             from services.recurring import get_recurring_sync_service
             from services.transaction_sync import get_transaction_sync_service
 
@@ -307,12 +326,14 @@ class WebhookServiceContainer:
             transaction_sync_service = get_transaction_sync_service()
             recurring_sync_service = get_recurring_sync_service()
             spending_computation_manager = get_spending_computation_manager()
+            merchant_stats_aggregator = get_merchant_stats_aggregator()
             cls._instance = WebhookService(
                 webhook_event_repo,
                 plaid_item_repo,
                 transaction_sync_service,
                 recurring_sync_service,
                 spending_computation_manager,
+                merchant_stats_aggregator,
             )
         return cls._instance
 

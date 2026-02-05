@@ -155,6 +155,16 @@ class MerchantSpendingSummary(BaseModel):
     percentage_of_total: Decimal | None = None
 
 
+class MerchantSpendingHistoryItem(BaseModel):
+    merchant_name: str
+    merchant_id: UUID | None = None
+    period_start: date
+    period_end: date
+    total_amount: Decimal
+    transaction_count: int
+    average_transaction: Decimal | None = None
+
+
 class AnalyticsComputationLogBase(BaseModel):
     computation_type: str
     status: ComputationStatus = ComputationStatus.IN_PROGRESS
@@ -237,3 +247,122 @@ class ComputationResultResponse(BaseModel):
     transactions_processed: int
     computation_time_ms: int
     error_message: str | None = None
+
+
+class MerchantStatsBase(BaseModel):
+    merchant_name: str
+    merchant_id: UUID | None = None
+    first_transaction_date: date
+    last_transaction_date: date
+    total_lifetime_spend: Decimal = Decimal("0")
+    total_transaction_count: int = 0
+    average_transaction_amount: Decimal | None = None
+    median_transaction_amount: Decimal | None = None
+    max_transaction_amount: Decimal | None = None
+    min_transaction_amount: Decimal | None = None
+    average_days_between_transactions: Decimal | None = None
+    most_frequent_day_of_week: int | None = None
+    most_frequent_hour_of_day: int | None = None
+    is_recurring: bool = False
+    recurring_stream_id: UUID | None = None
+    primary_category: str | None = None
+
+
+class MerchantStatsCreate(MerchantStatsBase):
+    user_id: UUID
+
+
+class MerchantStatsUpdate(BaseModel):
+    first_transaction_date: date | None = None
+    last_transaction_date: date | None = None
+    total_lifetime_spend: Decimal | None = None
+    total_transaction_count: int | None = None
+    average_transaction_amount: Decimal | None = None
+    median_transaction_amount: Decimal | None = None
+    max_transaction_amount: Decimal | None = None
+    min_transaction_amount: Decimal | None = None
+    average_days_between_transactions: Decimal | None = None
+    most_frequent_day_of_week: int | None = None
+    most_frequent_hour_of_day: int | None = None
+    is_recurring: bool | None = None
+    recurring_stream_id: UUID | None = None
+    primary_category: str | None = None
+
+
+class MerchantStatsResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    user_id: UUID
+    merchant_name: str
+    merchant_id: UUID | None
+    first_transaction_date: date
+    last_transaction_date: date
+    total_lifetime_spend: Decimal
+    total_transaction_count: int
+    average_transaction_amount: Decimal | None
+    median_transaction_amount: Decimal | None
+    max_transaction_amount: Decimal | None
+    min_transaction_amount: Decimal | None
+    average_days_between_transactions: Decimal | None
+    most_frequent_day_of_week: int | None
+    most_frequent_hour_of_day: int | None
+    is_recurring: bool
+    recurring_stream_id: UUID | None
+    primary_category: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MerchantStatsSummary(BaseModel):
+    merchant_name: str
+    merchant_id: UUID | None = None
+    total_lifetime_spend: Decimal
+    total_transaction_count: int
+    average_transaction_amount: Decimal | None = None
+    first_transaction_date: date
+    last_transaction_date: date
+    is_recurring: bool = False
+    primary_category: str | None = None
+
+
+class MerchantStatsListResponse(BaseModel):
+    merchants: list[MerchantStatsResponse]
+    total: int
+
+
+class MerchantStatsComputationResult(BaseModel):
+    status: ComputationStatus
+    merchants_computed: int
+    transactions_processed: int
+    computation_time_ms: int
+    error_message: str | None = None
+
+
+class SubcategorySpendingSummary(BaseModel):
+    category_detailed: str
+    total_amount: Decimal
+    transaction_count: int
+    average_transaction: Decimal | None = None
+    percentage_of_category: Decimal | None = None
+
+
+class CategoryDetailResponse(BaseModel):
+    category_primary: str
+    period_start: date
+    period_end: date
+    total_amount: Decimal
+    transaction_count: int
+    average_transaction: Decimal | None = None
+    percentage_of_total_spending: Decimal | None = None
+    subcategories: list[SubcategorySpendingSummary] = Field(default_factory=list)
+    top_merchants: list[MerchantSpendingSummary] = Field(default_factory=list)
+
+
+class CategorySpendingHistoryItem(BaseModel):
+    category_primary: str
+    period_start: date
+    period_end: date
+    total_amount: Decimal
+    transaction_count: int
+    average_transaction: Decimal | None = None
