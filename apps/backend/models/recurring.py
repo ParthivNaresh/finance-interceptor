@@ -170,3 +170,29 @@ class RecurringSyncResult(BaseModel):
     streams_updated: int
     streams_deactivated: int
     alerts_created: int
+
+
+class StreamTransactionResponse(BaseModel):
+    id: UUID
+    account_id: UUID
+    transaction_id: str
+    amount: Decimal
+    iso_currency_code: str
+    date: date
+    name: str
+    merchant_name: str | None = None
+    pending: bool
+    payment_channel: str | None = None
+    category: list[str] | None = None
+    personal_finance_category_primary: str | None = None
+    personal_finance_category_detailed: str | None = None
+    logo_url: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RecurringStreamDetailResponse(BaseModel):
+    stream: RecurringStreamResponse
+    transactions: list[StreamTransactionResponse]
+    total_spent: Decimal
+    occurrence_count: int

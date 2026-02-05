@@ -9,19 +9,23 @@ from middleware.auth import get_current_user
 from models.auth import AuthenticatedUser
 from models.enums import FrequencyType, StreamType
 from models.recurring import (
+    RecurringStreamDetailResponse,
     RecurringStreamListResponse,
     RecurringStreamResponse,
     RecurringSyncResult,
+    StreamTransactionResponse,
     UpcomingBillResponse,
     UpcomingBillsListResponse,
 )
 from repositories.recurring_stream import RecurringStreamRepository, get_recurring_stream_repository
+from repositories.transaction import TransactionRepository, get_transaction_repository
 from services.recurring import RecurringSyncService, get_recurring_sync_service
 
 router = APIRouter()
 
 CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
 RecurringStreamRepoDep = Annotated[RecurringStreamRepository, Depends(get_recurring_stream_repository)]
+TransactionRepoDep = Annotated[TransactionRepository, Depends(get_transaction_repository)]
 RecurringSyncServiceDep = Annotated[RecurringSyncService, Depends(get_recurring_sync_service)]
 
 
@@ -51,6 +55,27 @@ def _to_stream_response(stream: dict) -> RecurringStreamResponse:
         last_synced_at=_parse_datetime(stream["last_synced_at"]),
         created_at=_parse_datetime(stream["created_at"]),
         updated_at=_parse_datetime(stream["updated_at"]),
+    )
+
+
+def _to_transaction_response(txn: dict) -> StreamTransactionResponse:
+    return StreamTransactionResponse(
+        id=UUID(txn["id"]),
+        account_id=UUID(txn["account_id"]),
+        transaction_id=txn["transaction_id"],
+        amount=Decimal(str(txn["amount"])),
+        iso_currency_code=txn.get("iso_currency_code", "USD"),
+        date=txn["date"] if isinstance(txn["date"], date) else date.fromisoformat(txn["date"]),
+        name=txn["name"],
+        merchant_name=txn.get("merchant_name"),
+        pending=txn["pending"],
+        payment_channel=txn.get("payment_channel"),
+        category=txn.get("category"),
+        personal_finance_category_primary=txn.get("personal_finance_category_primary"),
+        personal_finance_category_detailed=txn.get("personal_finance_category_detailed"),
+        logo_url=txn.get("logo_url"),
+        created_at=_parse_datetime(txn["created_at"]),
+        updated_at=_parse_datetime(txn["updated_at"]),
     )
 
 
@@ -199,6 +224,49 @@ async def get_recurring_stream(
         )
 
     return _to_stream_response(stream)
+
+
+@router.get(
+    "/{stream_id}/transactions",
+    response_model=RecurringStreamDetailResponse,
+    summary="Get recurring stream with transactions",
+    description="Returns a recurring stream with all its associated transactions",
+)
+async def get_recurring_stream_transactions(
+    stream_id: UUID,
+    current_user: CurrentUserDep,
+    recurring_repo: RecurringStreamRepoDep,
+    transaction_repo: TransactionRepoDep,
+) -> RecurringStreamDetailResponse:
+    stream = recurring_repo.get_by_id(stream_id)
+    if not stream:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recurring stream not found",
+        )
+
+    if stream["user_id"] != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recurring stream not found",
+        )
+
+    transaction_ids = stream.get("transaction_ids") or []
+    transactions_data = transaction_repo.get_by_transaction_ids(transaction_ids)
+
+    transactions = [_to_transaction_response(txn) for txn in transactions_data]
+
+    total_spent = sum(
+        abs(Decimal(str(txn["amount"])))
+        for txn in transactions_data
+    )
+
+    return RecurringStreamDetailResponse(
+        stream=_to_stream_response(stream),
+        transactions=transactions,
+        total_spent=total_spent,
+        occurrence_count=len(transactions),
+    )
 
 
 @router.post(

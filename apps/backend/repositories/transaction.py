@@ -155,6 +155,22 @@ class TransactionRepository(BaseRepository[TransactionResponse, TransactionCreat
         )
         return len(result.data) if result.data else 0
 
+    def get_by_transaction_ids(
+        self,
+        transaction_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        if not transaction_ids:
+            return []
+
+        result = (
+            self._get_table()
+            .select("*")
+            .in_("transaction_id", transaction_ids)
+            .order("date", desc=True)
+            .execute()
+        )
+        return [dict(item) for item in result.data] if result.data else []
+
 
 class TransactionRepositoryContainer:
     _instance: TransactionRepository | None = None
