@@ -2,9 +2,10 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from middleware.auth import get_current_user
+from middleware.rate_limit import get_limiter, get_rate_limits
 from models.auth import AuthenticatedUser
 from models.plaid import (
     AccountResponse,
@@ -17,6 +18,8 @@ from repositories.plaid_item import PlaidItemRepository, get_plaid_item_reposito
 from services.transaction_sync import TransactionSyncService, get_transaction_sync_service
 
 router = APIRouter()
+limiter = get_limiter()
+limits = get_rate_limits()
 
 CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
 PlaidItemRepoDep = Annotated[PlaidItemRepository, Depends(get_plaid_item_repository)]
@@ -42,7 +45,9 @@ def calculate_net_worth_contribution(account_type: str, balance: Decimal | None)
     summary="List all accounts",
     description="Returns all connected accounts grouped by institution",
 )
+@limiter.limit(limits.default)
 async def list_accounts(
+    request: Request,
     current_user: CurrentUserDep,
     plaid_item_repo: PlaidItemRepoDep,
     account_repo: AccountRepoDep,
@@ -104,7 +109,9 @@ async def list_accounts(
     summary="Get account details",
     description="Returns details for a single account",
 )
+@limiter.limit(limits.default)
 async def get_account(
+    request: Request,
     account_id: UUID,
     current_user: CurrentUserDep,
     account_repo: AccountRepoDep,
@@ -144,7 +151,9 @@ async def get_account(
     summary="Sync account transactions",
     description="Triggers a transaction sync for the account's plaid item",
 )
+@limiter.limit(limits.plaid)
 async def sync_account(
+    request: Request,
     account_id: UUID,
     current_user: CurrentUserDep,
     account_repo: AccountRepoDep,
@@ -187,7 +196,9 @@ async def sync_account(
     summary="Disconnect a plaid item",
     description="Removes a plaid item and all its associated accounts and transactions",
 )
+@limiter.limit(limits.default)
 async def delete_plaid_item(
+    request: Request,
     plaid_item_id: UUID,
     current_user: CurrentUserDep,
     plaid_item_repo: PlaidItemRepoDep,

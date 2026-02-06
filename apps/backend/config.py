@@ -63,6 +63,34 @@ class Settings(BaseSettings):
         description="Seconds to wait before processing analytics tasks (debouncing)",
     )
 
+    rate_limit_enabled: bool = Field(
+        default=True,
+        description="Enable API rate limiting",
+    )
+    rate_limit_storage_url: str = Field(
+        default="",
+        description="Redis URL for rate limit storage (defaults to redis_url if empty)",
+    )
+    rate_limit_auth: str = Field(
+        default="5/minute",
+        description="Rate limit for auth endpoints (IP-based)",
+    )
+    rate_limit_plaid: str = Field(
+        default="10/minute",
+        description="Rate limit for Plaid endpoints (user-based)",
+    )
+    rate_limit_analytics_write: str = Field(
+        default="5/minute",
+        description="Rate limit for analytics write endpoints (user-based)",
+    )
+    rate_limit_default: str = Field(
+        default="60/minute",
+        description="Default rate limit for authenticated endpoints (user-based)",
+    )
+
+    def get_rate_limit_storage_url(self) -> str:
+        return self.rate_limit_storage_url or self.redis_url
+
     def is_development(self) -> bool:
         return self.debug or self.plaid_environment == "sandbox"
 

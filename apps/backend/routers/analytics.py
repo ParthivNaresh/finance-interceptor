@@ -4,9 +4,10 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from middleware.auth import get_current_user
+from middleware.rate_limit import get_limiter, get_rate_limits
 from models.analytics import (
     CategoryBreakdownResponse,
     CategoryDetailResponse,
@@ -41,6 +42,8 @@ from services.analytics.period_calculator import (
 )
 
 router = APIRouter()
+limiter = get_limiter()
+limits = get_rate_limits()
 
 CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
 SpendingPeriodRepoDep = Annotated[SpendingPeriodRepository, Depends(get_spending_period_repository)]
@@ -58,7 +61,9 @@ MerchantStatsAggregatorDep = Annotated[MerchantStatsAggregator, Depends(get_merc
     summary="Get spending summaries",
     description="Returns spending summaries for multiple periods with month-over-month changes",
 )
+@limiter.limit(limits.default)
 async def get_spending_summaries(
+    request: Request,
     current_user: CurrentUserDep,
     spending_period_repo: SpendingPeriodRepoDep,
     period_type: PeriodType = Query(default=PeriodType.MONTHLY, description="Period granularity"),
@@ -674,7 +679,9 @@ async def get_merchant_breakdown_by_range(
     summary="Trigger analytics computation",
     description="Triggers computation of spending analytics for the current user",
 )
+@limiter.limit(limits.analytics_write)
 async def trigger_computation(
+    request: Request,
     current_user: CurrentUserDep,
     computation_manager: ComputationManagerDep,
     force_full: bool = Query(default=False, description="Force full recomputation"),
@@ -807,7 +814,9 @@ async def get_merchant_detail(
     summary="Trigger merchant stats computation",
     description="Triggers computation of merchant lifetime statistics",
 )
+@limiter.limit(limits.analytics_write)
 async def trigger_merchant_stats_computation(
+    request: Request,
     current_user: CurrentUserDep,
     merchant_stats_aggregator: MerchantStatsAggregatorDep,
     force_full: bool = Query(default=False, description="Force full recomputation"),

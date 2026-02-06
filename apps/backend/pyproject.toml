@@ -15,6 +15,7 @@ dependencies = [
     "structlog>=24.0.0",
     "arq>=0.26.0",
     "redis>=5.0.0",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]
@@ -60,6 +61,7 @@ select = [
 ignore = [
     "PLR0913",
     "PLR2004",
+    "ARG001",
 ]
 
 [tool.ruff.lint.isort]
@@ -87,5 +89,5 @@ mypy_path = "."
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["plaid.*", "supabase.*", "gotrue.*", "structlog.*", "arq.*"]
+module = ["plaid.*", "supabase.*", "gotrue.*", "structlog.*", "arq.*", "slowapi.*", "limits.*"]
 ignore_missing_imports = true

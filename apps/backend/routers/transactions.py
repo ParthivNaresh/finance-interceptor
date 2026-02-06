@@ -2,9 +2,10 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from middleware.auth import get_current_user
+from middleware.rate_limit import get_limiter, get_rate_limits
 from models.auth import AuthenticatedUser
 from models.transaction import (
     TransactionDetailResponse,
@@ -16,6 +17,8 @@ from repositories.plaid_item import PlaidItemRepository, get_plaid_item_reposito
 from repositories.transaction import TransactionRepository, get_transaction_repository
 
 router = APIRouter()
+limiter = get_limiter()
+limits = get_rate_limits()
 
 CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
 TransactionRepoDep = Annotated[TransactionRepository, Depends(get_transaction_repository)]
@@ -29,7 +32,9 @@ PlaidItemRepoDep = Annotated[PlaidItemRepository, Depends(get_plaid_item_reposit
     summary="List transactions",
     description="Returns paginated list of transactions with optional filters",
 )
+@limiter.limit(limits.default)
 async def list_transactions(
+    request: Request,
     current_user: CurrentUserDep,
     transaction_repo: TransactionRepoDep,
     account_id: UUID | None = Query(default=None, description="Filter by account ID"),
@@ -90,7 +95,9 @@ async def list_transactions(
     summary="Get transaction details",
     description="Returns full details for a single transaction",
 )
+@limiter.limit(limits.default)
 async def get_transaction(
+    request: Request,
     transaction_id: UUID,
     current_user: CurrentUserDep,
     transaction_repo: TransactionRepoDep,

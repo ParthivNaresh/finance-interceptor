@@ -2,9 +2,10 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from middleware.auth import get_current_user
+from middleware.rate_limit import get_limiter, get_rate_limits
 from models.auth import AuthenticatedUser
 from models.enums import AlertSeverity, AlertStatus, AlertType, UserActionType
 from models.recurring import (
@@ -12,12 +13,13 @@ from models.recurring import (
     AlertListResponse,
     AlertResponse,
     AlertWithStreamResponse,
-    RecurringStreamResponse,
 )
 from repositories.alert import AlertRepository, get_alert_repository
 from repositories.recurring_stream import RecurringStreamRepository, get_recurring_stream_repository
 
 router = APIRouter()
+limiter = get_limiter()
+limits = get_rate_limits()
 
 CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
 AlertRepoDep = Annotated[AlertRepository, Depends(get_alert_repository)]
@@ -84,7 +86,9 @@ def _to_alert_with_stream(
     summary="List alerts",
     description="Returns paginated list of alerts",
 )
+@limiter.limit(limits.default)
 async def list_alerts(
+    request: Request,
     current_user: CurrentUserDep,
     alert_repo: AlertRepoDep,
     recurring_repo: RecurringStreamRepoDep,
@@ -126,7 +130,9 @@ async def list_alerts(
     summary="Get unread alert count",
     description="Returns the count of unread alerts",
 )
+@limiter.limit(limits.default)
 async def get_unread_count(
+    request: Request,
     current_user: CurrentUserDep,
     alert_repo: AlertRepoDep,
 ) -> dict[str, int]:
@@ -140,7 +146,9 @@ async def get_unread_count(
     summary="Get alert details",
     description="Returns details for a single alert",
 )
+@limiter.limit(limits.default)
 async def get_alert(
+    request: Request,
     alert_id: UUID,
     current_user: CurrentUserDep,
     alert_repo: AlertRepoDep,
@@ -172,7 +180,9 @@ async def get_alert(
     summary="Mark alert as read",
     description="Marks an alert as read",
 )
+@limiter.limit(limits.default)
 async def mark_as_read(
+    request: Request,
     alert_id: UUID,
     current_user: CurrentUserDep,
     alert_repo: AlertRepoDep,
@@ -206,7 +216,9 @@ async def mark_as_read(
     summary="Dismiss alert",
     description="Dismisses an alert",
 )
+@limiter.limit(limits.default)
 async def dismiss_alert(
+    request: Request,
     alert_id: UUID,
     current_user: CurrentUserDep,
     alert_repo: AlertRepoDep,
@@ -240,11 +252,13 @@ async def dismiss_alert(
     summary="Acknowledge alert with action",
     description="Acknowledges an alert and optionally records user action",
 )
+@limiter.limit(limits.default)
 async def acknowledge_alert(
+    request: Request,
     alert_id: UUID,
     current_user: CurrentUserDep,
     alert_repo: AlertRepoDep,
-    request: AlertAcknowledgeRequest,
+    acknowledge_request: AlertAcknowledgeRequest,
 ) -> AlertResponse:
     alert = alert_repo.get_by_id(alert_id)
     if not alert:
@@ -259,7 +273,7 @@ async def acknowledge_alert(
             detail="Alert not found",
         )
 
-    updated = alert_repo.acknowledge(alert_id, request.user_action)
+    updated = alert_repo.acknowledge(alert_id, acknowledge_request.user_action)
     if not updated:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -274,7 +288,9 @@ async def acknowledge_alert(
     summary="Mark all alerts as read",
     description="Marks all unread alerts as read",
 )
+@limiter.limit(limits.default)
 async def mark_all_as_read(
+    request: Request,
     current_user: CurrentUserDep,
     alert_repo: AlertRepoDep,
 ) -> dict[str, int]:

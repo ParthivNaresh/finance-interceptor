@@ -179,7 +179,7 @@ Pre-computed, rule-based analytics stored in Supabase. Provides structured insig
 ## Phase 8: Production Hardening
 
 ### 8.1 Security
-- [ ] Rate limiting
+- [x] Rate limiting (slowapi + Redis, per-user/IP limits)
 - [ ] Input validation audit
 - [ ] Security headers
 - [ ] Penetration testing

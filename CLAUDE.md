@@ -212,6 +212,65 @@ Set `TASK_QUEUE_ENABLED=false` to disable background processing (analytics runs 
 
 ---
 
+## Rate Limiting
+
+API endpoints are protected by rate limiting using slowapi with Redis storage.
+
+### Rate Limit Tiers
+
+| Tier | Limit | Endpoints |
+|------|-------|-----------|
+| `auth` | 5/minute | Authentication (IP-based) |
+| `plaid` | 10/minute | Plaid API calls, sync operations |
+| `analytics_write` | 5/minute | Analytics computation triggers |
+| `default` | 60/minute | All other authenticated endpoints |
+
+### Exempt Endpoints
+- `/api/webhooks/*` - Plaid webhooks must not be rate limited
+- `/health` - Health checks always accessible
+
+### Implementation
+```python
+from middleware.rate_limit import get_limiter, get_rate_limits
+
+limiter = get_limiter()
+limits = get_rate_limits()
+
+@router.get("/endpoint")
+@limiter.limit(limits.default)
+async def endpoint(request: Request, user: CurrentUser):
+    ...
+```
+
+### Response Headers
+On successful requests:
+- `X-RateLimit-Limit`: Max requests allowed
+- `X-RateLimit-Remaining`: Requests remaining
+- `X-RateLimit-Reset`: Unix timestamp when limit resets
+
+On 429 Too Many Requests:
+```json
+{
+  "error": "rate_limit_exceeded",
+  "detail": "Too many requests. Please try again later.",
+  "retry_after": 60
+}
+```
+With `Retry-After` header.
+
+### Configuration
+```env
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_AUTH=5/minute
+RATE_LIMIT_PLAID=10/minute
+RATE_LIMIT_ANALYTICS_WRITE=5/minute
+RATE_LIMIT_DEFAULT=60/minute
+```
+
+Set `RATE_LIMIT_ENABLED=false` to disable rate limiting (development only).
+
+---
+
 ## Mobile App (apps/mobile)
 
 ### Directory Structure
@@ -349,6 +408,11 @@ LOG_FORMAT=console
 REDIS_URL=redis://localhost:6379
 TASK_QUEUE_ENABLED=true
 TASK_DEBOUNCE_SECONDS=30
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_AUTH=5/minute
+RATE_LIMIT_PLAID=10/minute
+RATE_LIMIT_ANALYTICS_WRITE=5/minute
+RATE_LIMIT_DEFAULT=60/minute
 ```
 
 **Mobile (`apps/mobile/.env`):**

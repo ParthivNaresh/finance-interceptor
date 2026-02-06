@@ -3,8 +3,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
 
 from config import get_settings
+from middleware.rate_limit import get_limiter, rate_limit_exceeded_handler
 from observability import RequestLoggingMiddleware, configure_logging, get_logger
 from repositories.account import AccountRepositoryContainer
 from repositories.alert import AlertRepositoryContainer
@@ -90,6 +92,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    limiter = get_limiter()
+    application.state.limiter = limiter
+    application.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
     application.add_middleware(RequestLoggingMiddleware)
 
     application.add_middleware(
@@ -101,6 +107,11 @@ def create_app() -> FastAPI:
     )
 
     application.include_router(api_router)
+
+    logger.info(
+        "application.rate_limiting",
+        enabled=settings.rate_limit_enabled,
+    )
 
     return application
 

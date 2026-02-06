@@ -1,9 +1,10 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from middleware.auth import get_current_user
+from middleware.rate_limit import get_limiter, get_rate_limits
 from models.auth import AuthenticatedUser
 from models.plaid import (
     AccountCreate,
@@ -20,6 +21,8 @@ from services.encryption import EncryptionService, get_encryption_service
 from services.plaid import PlaidService, get_plaid_service
 
 router = APIRouter()
+limiter = get_limiter()
+limits = get_rate_limits()
 
 PlaidServiceDep = Annotated[PlaidService, Depends(get_plaid_service)]
 EncryptionServiceDep = Annotated[EncryptionService, Depends(get_encryption_service)]
@@ -34,7 +37,9 @@ CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
     summary="Create a Plaid Link token",
     description="Creates a link token for initializing Plaid Link in the mobile app",
 )
+@limiter.limit(limits.plaid)
 async def create_link_token(
+    request: Request,
     current_user: CurrentUserDep,
     plaid_service: PlaidServiceDep,
 ) -> LinkTokenResponse:
@@ -58,8 +63,10 @@ async def create_link_token(
     summary="Exchange a public token for an access token",
     description="Exchanges the public token from Plaid Link, stores credentials securely, and returns connected accounts",
 )
+@limiter.limit(limits.plaid)
 async def exchange_public_token(
-    request: ExchangeTokenRequest,
+    request: Request,
+    exchange_request: ExchangeTokenRequest,
     current_user: CurrentUserDep,
     plaid_service: PlaidServiceDep,
     encryption_service: EncryptionServiceDep,
@@ -67,7 +74,7 @@ async def exchange_public_token(
     account_repo: AccountRepoDep,
 ) -> ExchangeTokenResponse:
     try:
-        exchange_result = plaid_service.exchange_public_token(request.public_token)
+        exchange_result = plaid_service.exchange_public_token(exchange_request.public_token)
         access_token = exchange_result["access_token"]
         item_id = exchange_result["item_id"]
 

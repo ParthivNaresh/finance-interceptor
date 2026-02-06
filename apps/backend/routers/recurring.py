@@ -3,9 +3,10 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from middleware.auth import get_current_user
+from middleware.rate_limit import get_limiter, get_rate_limits
 from models.auth import AuthenticatedUser
 from models.enums import FrequencyType, StreamType
 from models.recurring import (
@@ -22,6 +23,8 @@ from repositories.transaction import TransactionRepository, get_transaction_repo
 from services.recurring import RecurringSyncService, get_recurring_sync_service
 
 router = APIRouter()
+limiter = get_limiter()
+limits = get_rate_limits()
 
 CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
 RecurringStreamRepoDep = Annotated[RecurringStreamRepository, Depends(get_recurring_stream_repository)]
@@ -117,7 +120,9 @@ def _calculate_monthly_amount(stream: dict) -> Decimal:
     summary="List recurring transactions",
     description="Returns all recurring transaction streams grouped by inflow/outflow",
 )
+@limiter.limit(limits.default)
 async def list_recurring(
+    request: Request,
     current_user: CurrentUserDep,
     recurring_repo: RecurringStreamRepoDep,
     active_only: bool = Query(default=True, description="Only return active streams"),
@@ -164,7 +169,9 @@ async def list_recurring(
     summary="Get upcoming bills",
     description="Returns bills expected in the next N days",
 )
+@limiter.limit(limits.default)
 async def get_upcoming_bills(
+    request: Request,
     current_user: CurrentUserDep,
     recurring_repo: RecurringStreamRepoDep,
     days: int = Query(default=30, ge=1, le=90, description="Number of days to look ahead"),
@@ -205,7 +212,9 @@ async def get_upcoming_bills(
     summary="Get recurring stream details",
     description="Returns details for a single recurring stream",
 )
+@limiter.limit(limits.default)
 async def get_recurring_stream(
+    request: Request,
     stream_id: UUID,
     current_user: CurrentUserDep,
     recurring_repo: RecurringStreamRepoDep,
@@ -232,7 +241,9 @@ async def get_recurring_stream(
     summary="Get recurring stream with transactions",
     description="Returns a recurring stream with all its associated transactions",
 )
+@limiter.limit(limits.default)
 async def get_recurring_stream_transactions(
+    request: Request,
     stream_id: UUID,
     current_user: CurrentUserDep,
     recurring_repo: RecurringStreamRepoDep,
@@ -275,7 +286,9 @@ async def get_recurring_stream_transactions(
     summary="Sync recurring transactions",
     description="Triggers a sync of recurring transactions from Plaid",
 )
+@limiter.limit(limits.plaid)
 async def sync_recurring(
+    request: Request,
     current_user: CurrentUserDep,
     sync_service: RecurringSyncServiceDep,
 ) -> RecurringSyncResult:
