@@ -5,6 +5,8 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PlaidEnvironment = Literal["sandbox", "development", "production"]
+LogFormat = Literal["json", "console"]
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 class Settings(BaseSettings):
@@ -36,7 +38,23 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Finance Interceptor"
+    app_version: str = "0.1.0"
     debug: bool = True
+
+    log_level: LogLevel = Field(
+        default="INFO",
+        description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
+    )
+    log_format: LogFormat = Field(
+        default="console",
+        description="Log output format (json for production, console for development)",
+    )
+
+    def is_development(self) -> bool:
+        return self.debug or self.plaid_environment == "sandbox"
+
+    def is_production(self) -> bool:
+        return not self.is_development()
 
 
 @lru_cache

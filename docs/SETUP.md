@@ -11,9 +11,10 @@ Complete setup instructions for developing Finance Interceptor from scratch.
 3. [Plaid Configuration](#plaid-configuration)
 4. [Supabase Configuration](#supabase-configuration)
 5. [Running the App](#running-the-app)
-6. [Webhook Setup (ngrok)](#webhook-setup-ngrok)
-7. [Testing](#testing)
-8. [Common Issues & Fixes](#common-issues--fixes)
+6. [Running on Physical iPhone](#running-on-physical-iphone)
+7. [Webhook Setup (ngrok)](#webhook-setup-ngrok)
+8. [Testing](#testing)
+9. [Common Issues & Fixes](#common-issues--fixes)
 
 ---
 
@@ -179,18 +180,19 @@ ENCRYPTION_KEY=your_generated_key_here
 
 ### 6. Configure Mobile App
 
-Edit `apps/mobile/app.json`, find the `extra` section:
+Create `apps/mobile/.env` from the example:
 
-```json
-{
-  "expo": {
-    "extra": {
-      "supabaseUrl": "https://your-project.supabase.co",
-      "supabaseAnonKey": "your_anon_key_here",
-      "apiUrl": "http://localhost:8000"
-    }
-  }
-}
+```bash
+cd apps/mobile
+cp .env.example .env
+```
+
+Edit `apps/mobile/.env` with your credentials:
+
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+EXPO_PUBLIC_API_URL=http://localhost:8000
 ```
 
 ---
@@ -220,6 +222,143 @@ Or open Xcode directly:
 ```bash
 open apps/mobile/ios/FinanceInterceptor.xcworkspace
 ```
+
+---
+
+## Running on Physical iPhone
+
+Running on a physical device requires additional setup since the phone can't access `localhost`.
+
+### Prerequisites
+
+- iPhone connected via USB cable
+- Mac and iPhone on the same WiFi network (for development)
+- Free Apple ID (for signing) or paid Apple Developer account
+
+### Step 1: Configure API URL for Physical Device
+
+The app needs to connect to your backend. Since `localhost` doesn't work from a phone, you need your Mac's IP address.
+
+1. Find your Mac's IP address:
+   ```bash
+   ipconfig getifaddr en0
+   ```
+   Example output: `192.168.1.100`
+
+2. Update `apps/mobile/.env`:
+   ```env
+   EXPO_PUBLIC_API_URL=http://192.168.1.100:8000
+   ```
+
+### Step 2: Prebuild the iOS Project
+
+```bash
+cd apps/mobile
+bunx expo prebuild --platform ios --clean
+```
+
+### Step 3: Install CocoaPods Dependencies
+
+```bash
+cd apps/mobile/ios
+pod install --repo-update
+```
+
+### Step 4: Open in Xcode
+
+```bash
+open apps/mobile/ios/FinanceInterceptor.xcworkspace
+```
+
+**Important:** Always open the `.xcworkspace` file, not `.xcodeproj`.
+
+### Step 5: Configure Signing
+
+1. In Xcode, select the **FinanceInterceptor** project in the left sidebar
+2. Select the **FinanceInterceptor** target
+3. Go to **Signing & Capabilities** tab
+4. Check **Automatically manage signing**
+5. Select your **Team** (your Apple ID)
+   - If you don't see your Apple ID, go to Xcode → Settings → Accounts → Add
+
+### Step 6: Select Your iPhone
+
+1. Connect your iPhone via USB
+2. Unlock your iPhone and tap "Trust" if prompted
+3. In Xcode's toolbar, click the device dropdown
+4. Select your physical iPhone
+
+**If your iPhone shows "Pairing in progress" for more than 2 minutes:**
+- Unplug and replug the USB cable
+- On iPhone: Settings → General → Transfer or Reset iPhone → Reset → Reset Location & Privacy
+- Reconnect and tap "Trust" again
+- Restart Xcode if needed
+
+### Step 7: Build and Run
+
+1. Click the **Play** button in Xcode (or press Cmd+R)
+2. Wait for the build to complete
+
+**If you see "Could not compute dependency graph" error:**
+1. Close Xcode completely (Cmd+Q)
+2. Run: `cd apps/mobile/ios && pod install --repo-update`
+3. Clear Xcode derived data: `rm -rf ~/Library/Developer/Xcode/DerivedData/FinanceInterceptor-*`
+4. Reopen: `open apps/mobile/ios/FinanceInterceptor.xcworkspace`
+5. Build again
+
+### Step 8: Trust the Developer Certificate
+
+On first run, you'll see "Untrusted Developer" error:
+
+1. On iPhone: **Settings → General → VPN & Device Management**
+2. Find your Apple ID under "Developer App"
+3. Tap **Trust "[Your Apple ID]"**
+4. Tap **Trust** again to confirm
+5. Reopen the app
+
+### Step 9: Start Metro and Connect
+
+1. Start the backend:
+   ```bash
+   just backend-start
+   ```
+
+2. Start Metro bundler:
+   ```bash
+   cd apps/mobile && bun start
+   ```
+
+3. **Press `s`** to switch to development build mode (not Expo Go)
+
+4. Open the app on your iPhone - it should connect automatically
+
+**If you see "No script URL provided":**
+- Make sure Metro is running
+- Press `s` in the Metro terminal to switch to development build mode
+- Scan the QR code shown in the terminal, OR
+- Shake your phone → Enter URL manually → Enter `YOUR_MAC_IP:8081`
+
+### Troubleshooting Physical Device
+
+**"Network request failed" errors:**
+- Ensure your Mac and iPhone are on the same WiFi network
+- Check that `apiUrl` in `app.json` uses your Mac's IP, not `localhost`
+- Verify the backend is running: `curl http://YOUR_MAC_IP:8000/health`
+- Check firewall isn't blocking port 8000
+
+**App shows blank screen or crashes:**
+- Make sure Metro bundler is running (`bun start`)
+- Press `s` to switch to development build mode
+- Shake phone to open dev menu → tap "Reload"
+
+**"Could not connect to development server":**
+- Check Metro is running on port 8081
+- Verify phone and Mac are on same network
+- Shake phone → "Enter URL manually" → enter `YOUR_MAC_IP:8081`
+
+**Build fails with signing errors:**
+- Ensure you selected a valid Team in Signing & Capabilities
+- Try: Product → Clean Build Folder, then build again
 
 ---
 
@@ -315,9 +454,18 @@ export SSL_CERT_FILE=$(.venv/bin/python -c "import certifi; print(certifi.where(
 export REQUESTS_CA_BUNDLE=$SSL_CERT_FILE
 ```
 
-### "No script URL provided" in Simulator
+### "No script URL provided" on Device
 
-Metro bundler isn't running. Run `just mobile-start` in another terminal.
+1. Metro bundler isn't running - start it with `bun start`
+2. Press `s` to switch to development build mode
+3. Scan the QR code or manually enter the URL
+
+### "Could not compute dependency graph" in Xcode
+
+1. Close Xcode completely (Cmd+Q)
+2. Run: `cd apps/mobile/ios && pod install --repo-update`
+3. Clear derived data: `rm -rf ~/Library/Developer/Xcode/DerivedData/FinanceInterceptor-*`
+4. Reopen the `.xcworkspace` file (not `.xcodeproj`)
 
 ### Plaid Link Shows "Development Mode" Alert
 
@@ -382,7 +530,7 @@ cd apps/mobile
 # Clean and rebuild
 rm -rf ios
 bunx expo prebuild --platform ios --clean
-bunx expo run:ios
+cd ios && pod install --repo-update
 ```
 
 ### CocoaPods Issues
@@ -390,8 +538,15 @@ bunx expo run:ios
 ```bash
 cd apps/mobile/ios
 pod deintegrate
-pod install
+pod install --repo-update
 ```
+
+### iPhone Pairing Stuck
+
+1. Unplug and replug USB cable
+2. On iPhone: Settings → General → Transfer or Reset iPhone → Reset → Reset Location & Privacy
+3. Reconnect and tap "Trust"
+4. Restart Xcode
 
 ---
 
@@ -411,13 +566,13 @@ pod install
 | `ENCRYPTION_KEY` | Key for encrypting tokens | `abc123...` |
 | `DEBUG` | Enable debug mode | `true` |
 
-### Mobile (`apps/mobile/app.json` → extra)
+### Mobile (`apps/mobile/.env`)
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `supabaseUrl` | Supabase project URL | `https://xxx.supabase.co` |
-| `supabaseAnonKey` | Supabase public key | `eyJ...` |
-| `apiUrl` | Backend API URL | `http://localhost:8000` |
+| `EXPO_PUBLIC_SUPABASE_URL` | Supabase project URL | `https://xxx.supabase.co` |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase public key | `eyJ...` |
+| `EXPO_PUBLIC_API_URL` | Backend API URL | `http://localhost:8000` (simulator) or `http://192.168.x.x:8000` (device) |
 
 ---
 

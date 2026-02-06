@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from models.transaction import PlaidTransactionData, TransactionCreate, TransactionSyncResult
+from observability import get_logger
 
 if TYPE_CHECKING:
     from repositories.account import AccountRepository
@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from repositories.transaction import TransactionRepository
     from services.encryption import EncryptionService
     from services.plaid import PlaidService
+
+logger = get_logger("services.transaction_sync")
 
 
 class TransactionSyncError(Exception):
@@ -37,19 +39,27 @@ class TransactionSyncService:
         self._transaction_repo = transaction_repo
 
     def sync_item(self, item_id: str) -> TransactionSyncResult:
+        log = logger.bind(plaid_item_id=item_id)
+        log.info("transaction_sync.started")
+
         plaid_item = self._plaid_item_repo.get_by_item_id(item_id)
         if not plaid_item:
+            log.error("transaction_sync.item_not_found")
             raise TransactionSyncError(f"Plaid item not found: {item_id}")
 
         return self.sync_plaid_item(UUID(plaid_item["id"]))
 
     def sync_plaid_item(self, plaid_item_id: UUID) -> TransactionSyncResult:
+        log = logger.bind(plaid_item_id=str(plaid_item_id))
+
         plaid_item = self._plaid_item_repo.get_by_id(plaid_item_id)
         if not plaid_item:
+            log.error("transaction_sync.item_not_found")
             raise TransactionSyncError(f"Plaid item not found: {plaid_item_id}")
 
         encrypted_token = plaid_item.get("encrypted_access_token")
         if not encrypted_token:
+            log.error("transaction_sync.no_access_token")
             raise TransactionSyncError(f"No access token for plaid item: {plaid_item_id}")
 
         access_token = self._encryption_service.decrypt(encrypted_token)
@@ -58,14 +68,31 @@ class TransactionSyncService:
         accounts = self._account_repo.get_by_plaid_item_id(plaid_item_id)
         account_map = {acc["account_id"]: UUID(acc["id"]) for acc in accounts}
 
+        log.debug(
+            "transaction_sync.accounts_loaded",
+            account_count=len(account_map),
+            has_cursor=cursor is not None,
+        )
+
         total_added = 0
         total_modified = 0
         total_removed = 0
         has_more = True
+        page_count = 0
 
         while has_more:
+            page_count += 1
             added, modified, removed, new_cursor, has_more = self._plaid_service.sync_transactions(
                 access_token, cursor
+            )
+
+            log.debug(
+                "transaction_sync.page_fetched",
+                page=page_count,
+                added=len(added),
+                modified=len(modified),
+                removed=len(removed),
+                has_more=has_more,
             )
 
             if added:
@@ -85,6 +112,14 @@ class TransactionSyncService:
 
         self._plaid_item_repo.update_last_sync(plaid_item_id)
 
+        log.info(
+            "transaction_sync.completed",
+            transactions_added=total_added,
+            transactions_modified=total_modified,
+            transactions_removed=total_removed,
+            pages_fetched=page_count,
+        )
+
         return TransactionSyncResult(
             added=total_added,
             modified=total_modified,
@@ -99,15 +134,24 @@ class TransactionSyncService:
         account_map: dict[str, UUID],
     ) -> None:
         creates = []
+        skipped = 0
         for txn in transactions:
             internal_account_id = account_map.get(txn.account_id)
             if not internal_account_id:
+                skipped += 1
                 continue
 
             creates.append(self._to_transaction_create(txn, internal_account_id))
 
         if creates:
             self._transaction_repo.upsert_many(creates)
+
+        if skipped > 0:
+            logger.debug(
+                "transaction_sync.transactions_skipped",
+                skipped_count=skipped,
+                reason="account_not_found",
+            )
 
     def _process_modified_transactions(
         self,

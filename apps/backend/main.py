@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from config import get_settings
+from observability import RequestLoggingMiddleware, configure_logging, get_logger
 from repositories.account import AccountRepositoryContainer
 from repositories.alert import AlertRepositoryContainer
 from repositories.plaid_item import PlaidItemRepositoryContainer
@@ -19,9 +21,26 @@ from services.recurring import AlertDetectionServiceContainer, RecurringSyncServ
 from services.transaction_sync import TransactionSyncServiceContainer
 from services.webhook import WebhookServiceContainer
 
+settings = get_settings()
+
+configure_logging(
+    log_level=settings.log_level,
+    log_format=settings.log_format,
+    service_name="finance-interceptor",
+    service_version=settings.app_version,
+)
+
+logger = get_logger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    logger.info(
+        "application.startup",
+        environment=settings.plaid_environment,
+        debug=settings.debug,
+    )
+
     DatabaseServiceContainer.get()
     AuthServiceContainer.get()
     EncryptionServiceContainer.get()
@@ -36,7 +55,13 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     AlertDetectionServiceContainer.get()
     RecurringSyncServiceContainer.get()
     WebhookServiceContainer.get()
+
+    logger.info("application.ready")
+
     yield
+
+    logger.info("application.shutdown")
+
     WebhookServiceContainer.reset()
     RecurringSyncServiceContainer.reset()
     AlertDetectionServiceContainer.reset()
@@ -57,9 +82,11 @@ def create_app() -> FastAPI:
     application = FastAPI(
         title="Finance Interceptor API",
         description="Backend API for the Finance Interceptor mobile app",
-        version="0.1.0",
+        version=settings.app_version,
         lifespan=lifespan,
     )
+
+    application.add_middleware(RequestLoggingMiddleware)
 
     application.add_middleware(
         CORSMiddleware,

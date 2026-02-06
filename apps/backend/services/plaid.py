@@ -16,6 +16,9 @@ from plaid.model.transactions_sync_request import TransactionsSyncRequest
 
 from config import Settings, get_settings
 from models.transaction import PlaidTransactionData
+from observability import get_logger
+
+logger = get_logger("services.plaid")
 
 
 class PlaidRecurringStream:
@@ -168,6 +171,9 @@ class PlaidService:
         user_id: str,
         redirect_uri: str | None = None,
     ) -> dict[str, str]:
+        log = logger.bind(user_id=user_id)
+        log.info("plaid.link_token.creating")
+
         request_params: dict[str, Any] = {
             "user": LinkTokenCreateRequestUser(client_user_id=user_id),
             "client_name": self._settings.app_name,
@@ -182,20 +188,39 @@ class PlaidService:
 
         request = LinkTokenCreateRequest(**request_params)
         response = self._client.link_token_create(request)
+
+        log.info("plaid.link_token.created")
         return response.to_dict()
 
     def exchange_public_token(self, public_token: str) -> dict[str, str]:
+        logger.info("plaid.public_token.exchanging")
+
         request = ItemPublicTokenExchangeRequest(public_token=public_token)
         response = self._client.item_public_token_exchange(request)
+
+        logger.info(
+            "plaid.public_token.exchanged",
+            item_id=response.item_id,
+        )
+
         return {
             "access_token": response.access_token,
             "item_id": response.item_id,
         }
 
     def get_item(self, access_token: str) -> dict[str, Any]:
+        logger.debug("plaid.item.fetching")
+
         request = ItemGetRequest(access_token=access_token)
         response = self._client.item_get(request)
         item = response.item
+
+        logger.debug(
+            "plaid.item.fetched",
+            item_id=item.item_id,
+            institution_id=item.institution_id,
+        )
+
         return {
             "item_id": item.item_id,
             "institution_id": item.institution_id,
@@ -203,6 +228,8 @@ class PlaidService:
         }
 
     def get_accounts(self, access_token: str) -> list[dict[str, Any]]:
+        logger.debug("plaid.accounts.fetching")
+
         request = AccountsGetRequest(access_token=access_token)
         response = self._client.accounts_get(request)
 
@@ -216,10 +243,19 @@ class PlaidService:
                 "type": account.type.value if account.type else None,
                 "subtype": account.subtype.value if account.subtype else None,
                 "mask": account.mask,
-                "current_balance": Decimal(str(balances.current)) if balances.current is not None else None,
-                "available_balance": Decimal(str(balances.available)) if balances.available is not None else None,
+                "current_balance": (
+                    Decimal(str(balances.current)) if balances.current is not None else None
+                ),
+                "available_balance": (
+                    Decimal(str(balances.available)) if balances.available is not None else None
+                ),
                 "iso_currency_code": balances.iso_currency_code or "USD",
             })
+
+        logger.debug(
+            "plaid.accounts.fetched",
+            account_count=len(accounts),
+        )
 
         return accounts
 
@@ -228,6 +264,11 @@ class PlaidService:
         access_token: str,
         cursor: str | None = None,
     ) -> tuple[list[PlaidTransactionData], list[PlaidTransactionData], list[str], str, bool]:
+        logger.debug(
+            "plaid.transactions.syncing",
+            has_cursor=cursor is not None,
+        )
+
         request_params: dict[str, Any] = {"access_token": access_token}
         if cursor:
             request_params["cursor"] = cursor
@@ -239,6 +280,14 @@ class PlaidService:
         modified = [self._parse_transaction(t) for t in response.modified]
         removed = [t.transaction_id for t in response.removed]
 
+        logger.debug(
+            "plaid.transactions.synced",
+            added=len(added),
+            modified=len(modified),
+            removed=len(removed),
+            has_more=response.has_more,
+        )
+
         return added, modified, removed, response.next_cursor, response.has_more
 
     def get_recurring_transactions(
@@ -246,6 +295,11 @@ class PlaidService:
         access_token: str,
         account_ids: list[str] | None = None,
     ) -> PlaidRecurringResponse:
+        logger.debug(
+            "plaid.recurring.fetching",
+            account_count=len(account_ids) if account_ids else 0,
+        )
+
         request_params: dict[str, Any] = {"access_token": access_token}
         if account_ids:
             request_params["account_ids"] = account_ids
@@ -263,6 +317,12 @@ class PlaidService:
             PlaidRecurringStream(stream)
             for stream in response_dict.get("outflow_streams", [])
         ]
+
+        logger.debug(
+            "plaid.recurring.fetched",
+            inflow_count=len(inflow_streams),
+            outflow_count=len(outflow_streams),
+        )
 
         return PlaidRecurringResponse(
             inflow_streams=inflow_streams,

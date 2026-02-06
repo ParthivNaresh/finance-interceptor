@@ -5,6 +5,7 @@ from uuid import UUID
 
 from models.enums import FrequencyType, StreamStatus, StreamType
 from models.recurring import AlertCreate, RecurringStreamCreate, RecurringSyncResult
+from observability import get_logger
 from services.plaid import PlaidRecurringStream
 
 if TYPE_CHECKING:
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
     from services.encryption import EncryptionService
     from services.plaid import PlaidService
     from services.recurring.alert_detection import AlertDetectionService
+
+logger = get_logger("services.recurring_sync")
 
 
 class RecurringSyncError(Exception):
@@ -43,8 +46,12 @@ class RecurringSyncService:
         self._alert_detection_service = alert_detection_service
 
     def sync_for_plaid_item(self, plaid_item_id: UUID) -> RecurringSyncResult:
+        log = logger.bind(plaid_item_id=str(plaid_item_id))
+        log.info("recurring_sync.started")
+
         plaid_item = self._plaid_item_repo.get_by_id(plaid_item_id)
         if not plaid_item:
+            log.error("recurring_sync.item_not_found")
             raise RecurringSyncError(f"Plaid item not found: {plaid_item_id}")
 
         user_id = UUID(plaid_item["user_id"])
@@ -52,6 +59,11 @@ class RecurringSyncService:
 
         accounts = self._account_repo.get_by_plaid_item_id(plaid_item_id)
         account_id_map = {acc["account_id"]: UUID(acc["id"]) for acc in accounts}
+
+        log.debug(
+            "recurring_sync.accounts_loaded",
+            account_count=len(account_id_map),
+        )
 
         response = self._plaid_service.get_recurring_transactions(access_token)
 
@@ -103,7 +115,7 @@ class RecurringSyncService:
                 alert_type="cancelled_subscription",
                 severity="medium",
                 title="Subscription may have ended",
-                message=f"We haven't seen a charge from {deactivated_stream.get('merchant_name') or deactivated_stream.get('description', 'Unknown')} recently.",
+                message=self._build_cancelled_message(deactivated_stream),
                 data={
                     "merchant_name": deactivated_stream.get("merchant_name"),
                     "last_date": str(deactivated_stream.get("last_date")),
@@ -114,6 +126,16 @@ class RecurringSyncService:
         for alert in all_alerts:
             self._alert_repo.create(alert)
             alerts_created += 1
+
+        log.info(
+            "recurring_sync.completed",
+            streams_created=streams_created,
+            streams_updated=streams_updated,
+            streams_deactivated=len(deactivated),
+            alerts_created=alerts_created,
+            inflow_count=len(response.inflow_streams),
+            outflow_count=len(response.outflow_streams),
+        )
 
         return RecurringSyncResult(
             streams_synced=streams_created + streams_updated,
@@ -176,9 +198,17 @@ class RecurringSyncService:
             "alerts": alerts,
         }
 
+    def _build_cancelled_message(self, stream: dict) -> str:
+        merchant = stream.get("merchant_name") or stream.get("description", "Unknown")
+        return f"We haven't seen a charge from {merchant} recently."
+
     def sync_all_for_user(self, user_id: UUID) -> list[RecurringSyncResult]:
+        log = logger.bind(user_id=str(user_id))
+        log.info("recurring_sync.user_sync_started")
+
         plaid_items = self._plaid_item_repo.get_by_user_id(user_id)
         results = []
+        errors = 0
 
         for item in plaid_items:
             if item.get("status") != "active":
@@ -187,8 +217,20 @@ class RecurringSyncService:
             try:
                 result = self.sync_for_plaid_item(UUID(item["id"]))
                 results.append(result)
-            except RecurringSyncError:
+            except RecurringSyncError as e:
+                errors += 1
+                log.warning(
+                    "recurring_sync.item_sync_failed",
+                    plaid_item_id=item["id"],
+                    error=str(e),
+                )
                 continue
+
+        log.info(
+            "recurring_sync.user_sync_completed",
+            items_synced=len(results),
+            items_failed=errors,
+        )
 
         return results
 
