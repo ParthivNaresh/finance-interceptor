@@ -183,17 +183,22 @@ Pre-computed, rule-based analytics stored in Supabase. Provides structured insig
 - [ ] Input validation audit
 - [ ] Security headers
 - [ ] Penetration testing
+- [x] Environment-based secrets (mobile credentials moved from app.json to .env)
 
 ### 8.2 Performance
 - [ ] Database indexing optimization
 - [ ] API response caching
-- [ ] Background job queue (Celery/Temporal)
+- [x] Background job queue (ARQ + Redis)
+- [x] Analytics computation debouncing (30s delay, prevents duplicate work)
 - [ ] Analytics computation scheduling
 
-### 8.3 Monitoring
+### 8.3 Monitoring & Observability
+- [x] Structured logging (structlog with JSON/console output)
+- [x] Request logging middleware (correlation IDs, timing, status)
+- [x] PII scrubbing in logs
+- [x] Third-party log integration (uvicorn, httpx, supabase)
 - [ ] Error tracking (Sentry)
 - [ ] APM (Application Performance Monitoring)
-- [ ] Logging infrastructure
 
 ### 8.4 Deployment
 - [ ] CI/CD pipeline

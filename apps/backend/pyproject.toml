@@ -13,6 +13,8 @@ dependencies = [
     "supabase>=2.0.0",
     "cryptography>=44.0.0",
     "structlog>=24.0.0",
+    "arq>=0.26.0",
+    "redis>=5.0.0",
 ]
 
 [project.optional-dependencies]
@@ -61,7 +63,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["config", "middleware", "models", "observability", "repositories", "routers", "services"]
+known-first-party = ["config", "middleware", "models", "observability", "repositories", "routers", "services", "workers"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -85,5 +87,5 @@ mypy_path = "."
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["plaid.*", "supabase.*", "gotrue.*", "structlog.*"]
+module = ["plaid.*", "supabase.*", "gotrue.*", "structlog.*", "arq.*"]
 ignore_missing_imports = true

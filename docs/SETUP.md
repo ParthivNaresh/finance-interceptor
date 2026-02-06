@@ -199,24 +199,38 @@ EXPO_PUBLIC_API_URL=http://localhost:8000
 
 ## Running the App
 
-You need **3 terminal windows** running simultaneously:
+You need **4 terminal windows** running simultaneously for full functionality:
 
-### Terminal 1: Backend Server
+### Terminal 1: Redis (for background jobs)
+```bash
+just redis-start
+```
+This starts Redis in Docker. Only needed once per session.
+
+### Terminal 2: Backend Server
 ```bash
 just backend-start
 ```
 Server runs at http://localhost:8000
 
-### Terminal 2: Metro Bundler
+### Terminal 3: Background Worker
+```bash
+just worker-start
+```
+Processes analytics computation jobs asynchronously.
+
+### Terminal 4: Metro Bundler
 ```bash
 just mobile-start
 ```
 Press `i` to open iOS simulator.
 
-### Terminal 3: iOS Simulator (Alternative)
+### Alternative: iOS Simulator
 ```bash
 just mobile-ios
 ```
+
+**Note:** If you don't have Docker or don't want to run Redis, set `TASK_QUEUE_ENABLED=false` in `apps/backend/.env`. Analytics will run synchronously (slower webhook processing but still functional).
 
 Or open Xcode directly:
 ```bash
@@ -565,6 +579,11 @@ pod install --repo-update
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service key | `eyJ...` |
 | `ENCRYPTION_KEY` | Key for encrypting tokens | `abc123...` |
 | `DEBUG` | Enable debug mode | `true` |
+| `LOG_LEVEL` | Logging level | `INFO` |
+| `LOG_FORMAT` | Log output format | `console` or `json` |
+| `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
+| `TASK_QUEUE_ENABLED` | Enable background jobs | `true` |
+| `TASK_DEBOUNCE_SECONDS` | Debounce delay for analytics | `30` |
 
 ### Mobile (`apps/mobile/.env`)
 

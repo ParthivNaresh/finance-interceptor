@@ -18,6 +18,7 @@ from services.database import DatabaseServiceContainer
 from services.encryption import EncryptionServiceContainer
 from services.plaid import PlaidServiceContainer
 from services.recurring import AlertDetectionServiceContainer, RecurringSyncServiceContainer
+from services.task_queue import TaskQueueServiceContainer
 from services.transaction_sync import TransactionSyncServiceContainer
 from services.webhook import WebhookServiceContainer
 
@@ -39,6 +40,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         "application.startup",
         environment=settings.plaid_environment,
         debug=settings.debug,
+        task_queue_enabled=settings.task_queue_enabled,
     )
 
     DatabaseServiceContainer.get()
@@ -54,6 +56,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     TransactionSyncServiceContainer.get()
     AlertDetectionServiceContainer.get()
     RecurringSyncServiceContainer.get()
+    TaskQueueServiceContainer.get()
     WebhookServiceContainer.get()
 
     logger.info("application.ready")
@@ -63,6 +66,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("application.shutdown")
 
     WebhookServiceContainer.reset()
+    await TaskQueueServiceContainer.close()
     RecurringSyncServiceContainer.reset()
     AlertDetectionServiceContainer.reset()
     TransactionSyncServiceContainer.reset()

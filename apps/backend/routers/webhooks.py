@@ -16,7 +16,7 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
     "/plaid",
     response_model=WebhookAcknowledgeResponse,
     summary="Receive Plaid webhooks",
-    description="Endpoint for Plaid to send webhook notifications about transactions, item status, etc.",
+    description="Endpoint for Plaid to send webhook notifications",
 )
 async def receive_plaid_webhook(
     request: Request,
@@ -49,7 +49,7 @@ async def receive_plaid_webhook(
     event_id = webhook_service.store_event(webhook, payload)
 
     try:
-        webhook_service.process_webhook(webhook, event_id)
+        await webhook_service.process_webhook_async(webhook, event_id)
     except Exception as e:
         return WebhookAcknowledgeResponse(
             received=True,

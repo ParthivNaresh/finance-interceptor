@@ -38,6 +38,13 @@ from services.recurring import (
     get_alert_detection_service,
     get_recurring_sync_service,
 )
+from services.task_queue import (
+    EnqueueResult,
+    TaskQueueError,
+    TaskQueueService,
+    TaskQueueServiceContainer,
+    get_task_queue_service,
+)
 from services.transaction_sync import (
     TransactionSyncError,
     TransactionSyncService,
@@ -65,6 +72,7 @@ __all__ = [
     "EncryptionError",
     "EncryptionService",
     "EncryptionServiceContainer",
+    "EnqueueResult",
     "PlaidRecurringResponse",
     "PlaidRecurringStream",
     "PlaidService",
@@ -78,6 +86,9 @@ __all__ = [
     "SpendingComputationError",
     "SpendingComputationManager",
     "SpendingComputationManagerContainer",
+    "TaskQueueError",
+    "TaskQueueService",
+    "TaskQueueServiceContainer",
     "TransactionSyncError",
     "TransactionSyncService",
     "TransactionSyncServiceContainer",
@@ -95,6 +106,7 @@ __all__ = [
     "get_recurring_sync_service",
     "get_spending_aggregator",
     "get_spending_computation_manager",
+    "get_task_queue_service",
     "get_transaction_sync_service",
     "get_transfer_detector",
     "get_webhook_service",

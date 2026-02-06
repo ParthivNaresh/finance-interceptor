@@ -38,6 +38,21 @@ finance-interceptor/
 apps/backend/
 ├── main.py              # FastAPI app factory
 ├── config.py            # Settings from env vars
+├── observability/       # Logging infrastructure
+│   ├── __init__.py      # Public API (get_logger, configure_logging)
+│   ├── config.py        # Logging configuration
+│   ├── context.py       # Request context utilities
+│   ├── middleware.py    # Request logging middleware
+│   ├── processors.py    # PII scrubbing, service info
+│   └── constants.py     # Sensitive keys, patterns
+├── workers/             # Background job processing (ARQ)
+│   ├── __init__.py      # Exports WorkerSettings
+│   ├── settings.py      # ARQ worker configuration
+│   ├── lifecycle.py     # Startup/shutdown hooks
+│   ├── context.py       # WorkerContext dataclass
+│   ├── retry.py         # Exponential backoff utility
+│   └── tasks/           # Task definitions
+│       └── analytics.py # Analytics computation task
 ├── models/              # Pydantic models
 │   ├── enums.py         # All enum types
 │   ├── auth.py          # AuthenticatedUser
@@ -116,6 +131,29 @@ async def endpoint(user: CurrentUser):
 - Validated via Supabase `auth.get_user(token)`
 - Returns `AuthenticatedUser` with `id` and `email`
 
+**Logging Pattern:**
+```python
+from observability import get_logger, bind_context
+
+logger = get_logger("services.plaid")
+
+# Basic logging with structured data
+logger.info("plaid.link_token.created", user_id=user_id)
+
+# Bind context for request-scoped data
+bind_context(user_id=str(user.id))
+
+# Use bound logger for operation-specific context
+log = logger.bind(plaid_item_id=item_id)
+log.info("transaction_sync.started")
+log.info("transaction_sync.completed", transactions_added=48)
+```
+
+Log output (console):
+```
+2024-01-15 14:32:01 [info] transaction_sync.completed [services.transaction_sync] plaid_item_id=abc-123 transactions_added=48 request_id=xyz-789
+```
+
 ### Running Backend
 ```bash
 just backend-start
@@ -125,6 +163,52 @@ cd apps/backend && poetry run uvicorn main:app --reload
 
 ### API Docs
 http://localhost:8000/docs
+
+---
+
+## Background Worker (ARQ)
+
+Analytics computation runs asynchronously via a Redis-backed job queue.
+
+### Architecture
+```
+Webhook → FastAPI → Redis Queue → ARQ Worker → Analytics Computation
+                         ↓
+                   30s debounce
+```
+
+### Key Features
+- **Debouncing**: Multiple webhooks for same user within 30s trigger only one computation
+- **Retry with backoff**: Failed jobs retry with exponential backoff (10s, 20s, 40s...)
+- **Graceful fallback**: If Redis unavailable, runs synchronously
+
+### Running Worker
+```bash
+# Start Redis (Docker)
+just redis-start
+
+# Start worker
+just worker-start
+```
+
+### Task Queue Service
+```python
+from services.task_queue import get_task_queue_service
+
+# Enqueue analytics computation with debouncing
+task_queue = get_task_queue_service()
+result = await task_queue.enqueue_analytics_computation(user_id)
+# result.was_debounced = True if existing job was cancelled
+```
+
+### Configuration
+```env
+REDIS_URL=redis://localhost:6379
+TASK_QUEUE_ENABLED=true
+TASK_DEBOUNCE_SECONDS=30
+```
+
+Set `TASK_QUEUE_ENABLED=false` to disable background processing (analytics runs synchronously).
 
 ---
 
@@ -251,7 +335,7 @@ Located in `docs/migrations/`. Run via Supabase dashboard SQL editor.
 
 ## Environment Variables
 
-**Backend (.env):**
+**Backend (`apps/backend/.env`):**
 ```
 PLAID_CLIENT_ID=xxx
 PLAID_SECRET=xxx
@@ -260,10 +344,21 @@ SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_ANON_KEY=xxx
 SUPABASE_SERVICE_ROLE_KEY=xxx
 ENCRYPTION_KEY=xxx
+LOG_LEVEL=INFO
+LOG_FORMAT=console
+REDIS_URL=redis://localhost:6379
+TASK_QUEUE_ENABLED=true
+TASK_DEBOUNCE_SECONDS=30
 ```
 
-**Mobile (config/supabase.ts):**
-Supabase URL and anon key are in config file.
+**Mobile (`apps/mobile/.env`):**
+```
+EXPO_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=xxx
+EXPO_PUBLIC_API_URL=http://localhost:8000
+```
+
+Note: Mobile uses `EXPO_PUBLIC_` prefix for environment variables (Expo convention).
 
 ---
 

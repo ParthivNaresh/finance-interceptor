@@ -9,22 +9,34 @@ A proactive financial monitoring app that detects subscription price increases a
 - 🔄 Automatic transaction sync via webhooks
 - 🔐 Secure token storage with encryption
 - 📱 Cross-platform mobile app (iOS/Android)
+- 📈 Pre-computed spending analytics
+- 🔔 Subscription price change detection
+- 📝 Structured logging with PII protection
+- ⚡ Background job processing with Redis + ARQ
 
 ## Quick Start
 
-**Prerequisites:** macOS, Xcode, Python 3.11+, Bun, uv, just
+**Prerequisites:** macOS, Xcode, Python 3.11+, Bun, uv, just, Docker
 
 ```bash
 # Install dependencies
 just install
 
-# Start backend (Terminal 1)
+# Start Redis (Terminal 1)
+just redis-start
+
+# Start backend (Terminal 2)
 just backend-start
 
-# Start mobile (Terminal 2)
+# Start worker (Terminal 3)
+just worker-start
+
+# Start mobile (Terminal 4)
 just mobile-start
 # Press 'i' for iOS simulator
 ```
+
+**Note:** Redis and worker are optional. Set `TASK_QUEUE_ENABLED=false` in `.env` to run without them.
 
 ## Documentation
 
@@ -44,7 +56,9 @@ finance-interceptor/
 │   │   ├── routers/      # API endpoints
 │   │   ├── services/     # Business logic
 │   │   ├── repositories/ # Database operations
-│   │   └── models/       # Pydantic models
+│   │   ├── models/       # Pydantic models
+│   │   ├── workers/      # Background job processing
+│   │   └── observability/# Logging infrastructure
 │   │
 │   └── mobile/           # React Native Expo app
 │       ├── app/          # Screens (file-based routing)
@@ -66,6 +80,7 @@ finance-interceptor/
 | Database | Supabase (PostgreSQL) |
 | Auth | Supabase Auth |
 | Banking | Plaid API |
+| Job Queue | ARQ + Redis |
 
 ## Testing (Sandbox)
 

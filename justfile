@@ -55,6 +55,13 @@ backend-start:
     export REQUESTS_CA_BUNDLE=$SSL_CERT_FILE && \
     uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
+# Start background worker
+worker-start:
+    cd apps/backend && source .venv/bin/activate && \
+    export SSL_CERT_FILE=$(.venv/bin/python -c "import certifi; print(certifi.where())") && \
+    export REQUESTS_CA_BUNDLE=$SSL_CERT_FILE && \
+    arq workers.WorkerSettings
+
 # Lint backend code
 backend-lint:
     cd apps/backend && source .venv/bin/activate && ruff check .
@@ -74,6 +81,18 @@ backend-typecheck:
 # Install backend dependencies
 backend-install:
     cd apps/backend && uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"
+
+# ============================================================================
+# REDIS
+# ============================================================================
+
+# Start Redis (Docker)
+redis-start:
+    docker run -d --name finance-interceptor-redis -p 6379:6379 redis:alpine
+
+# Stop Redis (Docker)
+redis-stop:
+    docker stop finance-interceptor-redis && docker rm finance-interceptor-redis
 
 # ============================================================================
 # ALL

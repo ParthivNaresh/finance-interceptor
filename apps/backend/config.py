@@ -50,6 +50,19 @@ class Settings(BaseSettings):
         description="Log output format (json for production, console for development)",
     )
 
+    redis_url: str = Field(
+        default="redis://localhost:6379",
+        description="Redis connection URL for task queue",
+    )
+    task_queue_enabled: bool = Field(
+        default=True,
+        description="Enable background task queue (disable for synchronous fallback)",
+    )
+    task_debounce_seconds: int = Field(
+        default=30,
+        description="Seconds to wait before processing analytics tasks (debouncing)",
+    )
+
     def is_development(self) -> bool:
         return self.debug or self.plaid_environment == "sandbox"
 
