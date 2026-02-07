@@ -14,7 +14,7 @@ from observability import get_logger
 logger = get_logger("middleware.exceptions")
 
 
-def _get_request_id(request: Request) -> str:
+def get_request_id(request: Request) -> str:
     request_id = request.headers.get("X-Request-ID")
     if request_id:
         return request_id
@@ -51,7 +51,7 @@ def _json_error(
 
 
 def domain_error_handler(request: Request, exc: DomainError) -> Response:
-    request_id = _get_request_id(request)
+    request_id = get_request_id(request)
 
     log_method = logger.warning if 400 <= exc.http_status < 500 else logger.error
     log_method(
@@ -64,6 +64,10 @@ def domain_error_handler(request: Request, exc: DomainError) -> Response:
         code=exc.code,
     )
 
+    headers: dict[str, str] | None = None
+    if exc.http_status == 401:
+        headers = {"WWW-Authenticate": "Bearer"}
+
     return _json_error(
         status_code=exc.http_status,
         error=exc.error,
@@ -71,11 +75,12 @@ def domain_error_handler(request: Request, exc: DomainError) -> Response:
         message=exc.message,
         request_id=request_id,
         details=exc.details,
+        headers=headers,
     )
 
 
 def http_exception_handler(request: Request, exc: HTTPException) -> Response:
-    request_id = _get_request_id(request)
+    request_id = get_request_id(request)
 
     status_code = int(getattr(exc, "status_code", 500) or 500)
 
@@ -129,7 +134,7 @@ def http_exception_handler(request: Request, exc: HTTPException) -> Response:
 
 
 def request_validation_error_handler(request: Request, exc: RequestValidationError) -> Response:
-    request_id = _get_request_id(request)
+    request_id = get_request_id(request)
 
     field_errors: list[ApiFieldError] = []
     for err in exc.errors()[:50]:
@@ -160,7 +165,7 @@ def request_validation_error_handler(request: Request, exc: RequestValidationErr
 
 
 def unhandled_exception_handler(request: Request, exc: Exception) -> Response:
-    request_id = _get_request_id(request)
+    request_id = get_request_id(request)
 
     logger.exception(
         "api.unhandled_exception",

@@ -3,8 +3,9 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from errors import UnauthorizedError
 from models.auth import AuthenticatedUser
-from services.auth import AuthenticationError, AuthService, get_auth_service
+from services.auth import AuthService, get_auth_service
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -23,14 +24,7 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    try:
-        return auth_service.validate_token(credentials.credentials)
-    except AuthenticationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=e.message,
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from e
+    return auth_service.validate_token(credentials.credentials)
 
 
 def get_optional_user(
@@ -42,5 +36,5 @@ def get_optional_user(
 
     try:
         return auth_service.validate_token(credentials.credentials)
-    except AuthenticationError:
+    except UnauthorizedError:
         return None

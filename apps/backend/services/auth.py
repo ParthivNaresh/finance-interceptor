@@ -8,12 +8,6 @@ from services.database import DatabaseService, get_database_service
 logger = get_logger("services.auth")
 
 
-class AuthenticationError(Exception):
-    def __init__(self, message: str = "Authentication failed") -> None:
-        self.message = message
-        super().__init__(self.message)
-
-
 class AuthService:
     def __init__(self, database_service: DatabaseService) -> None:
         self._db = database_service

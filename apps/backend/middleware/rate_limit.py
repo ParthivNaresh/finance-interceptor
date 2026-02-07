@@ -9,9 +9,15 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from config import Settings, get_settings
+from middleware.exceptions import get_request_id
+from models.errors import ApiErrorResponse
 from observability import get_logger
 
 logger = get_logger("middleware.rate_limit")
+
+_RATE_LIMIT_ERROR = "rate_limit_exceeded"
+_RATE_LIMIT_CODE = "FI-429-001"
+_RATE_LIMIT_MESSAGE = "Too many requests. Please try again later."
 
 
 def get_client_ip(request: Request) -> str:
@@ -57,25 +63,29 @@ def _create_limiter(settings: Settings) -> Limiter:
 
 def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
     retry_after = _extract_retry_after(exc)
+    request_id = get_request_id(request)
 
     logger.warning(
         "rate_limit.exceeded",
+        request_id=request_id,
         path=request.url.path,
         method=request.method,
         limit=str(exc.detail),
         retry_after=retry_after,
     )
 
+    payload = ApiErrorResponse(
+        error=_RATE_LIMIT_ERROR,
+        code=_RATE_LIMIT_CODE,
+        message=_RATE_LIMIT_MESSAGE,
+        request_id=request_id,
+        details={"retry_after": retry_after},
+    )
+
     return JSONResponse(
         status_code=429,
-        content={
-            "error": "rate_limit_exceeded",
-            "detail": "Too many requests. Please try again later.",
-            "retry_after": retry_after,
-        },
-        headers={
-            "Retry-After": str(retry_after),
-        },
+        content=payload.model_dump(),
+        headers={"Retry-After": str(retry_after)},
     )
 
 
