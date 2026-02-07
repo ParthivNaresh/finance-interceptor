@@ -14,6 +14,7 @@ class FrequencyType(str, Enum):
     QUARTERLY = "quarterly"
     SEMI_ANNUALLY = "semi_annually"
     ANNUALLY = "annually"
+    IRREGULAR = "irregular"
     UNKNOWN = "unknown"
 
     @classmethod

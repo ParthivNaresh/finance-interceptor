@@ -9,11 +9,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from middleware.auth import get_current_user
 from middleware.rate_limit import get_limiter, get_rate_limits
 from models.analytics import (
+    CashFlowComputationResultResponse,
+    CashFlowMetricsListResponse,
+    CashFlowMetricsResponse,
     CategoryBreakdownResponse,
     CategoryDetailResponse,
     CategorySpendingHistoryItem,
     CategorySpendingSummary,
     ComputationResultResponse,
+    IncomeSourceListResponse,
+    IncomeSourceResponse,
     MerchantBreakdownResponse,
     MerchantSpendingHistoryItem,
     MerchantSpendingSummary,
@@ -27,12 +32,15 @@ from models.analytics import (
 )
 from models.auth import AuthenticatedUser
 from models.enums import PeriodType
+from repositories.cash_flow_metrics import CashFlowMetricsRepository, get_cash_flow_metrics_repository
 from repositories.category_spending import CategorySpendingRepository, get_category_spending_repository
+from repositories.income_source import IncomeSourceRepository, get_income_source_repository
 from repositories.merchant_spending import MerchantSpendingRepository, get_merchant_spending_repository
 from repositories.merchant_stats import MerchantStatsRepository, get_merchant_stats_repository
 from repositories.spending_period import SpendingPeriodRepository, get_spending_period_repository
 from repositories.transaction import TransactionRepository, get_transaction_repository
 from services.analytics import get_spending_computation_manager
+from services.analytics.cash_flow_aggregator import CashFlowAggregator, get_cash_flow_aggregator
 from services.analytics.computation_manager import SpendingComputationManager
 from services.analytics.merchant_stats_aggregator import MerchantStatsAggregator, get_merchant_stats_aggregator
 from services.analytics.period_calculator import (
@@ -53,6 +61,9 @@ MerchantStatsRepoDep = Annotated[MerchantStatsRepository, Depends(get_merchant_s
 TransactionRepoDep = Annotated[TransactionRepository, Depends(get_transaction_repository)]
 ComputationManagerDep = Annotated[SpendingComputationManager, Depends(get_spending_computation_manager)]
 MerchantStatsAggregatorDep = Annotated[MerchantStatsAggregator, Depends(get_merchant_stats_aggregator)]
+CashFlowRepoDep = Annotated[CashFlowMetricsRepository, Depends(get_cash_flow_metrics_repository)]
+IncomeSourceRepoDep = Annotated[IncomeSourceRepository, Depends(get_income_source_repository)]
+CashFlowAggregatorDep = Annotated[CashFlowAggregator, Depends(get_cash_flow_aggregator)]
 
 
 @router.get(
@@ -824,6 +835,154 @@ async def trigger_merchant_stats_computation(
     return merchant_stats_aggregator.compute_for_user(
         user_id=current_user.id,
         full_recompute=force_full,
+    )
+
+
+@router.get(
+    "/cash-flow",
+    response_model=CashFlowMetricsListResponse,
+    summary="Get cash flow metrics",
+    description="Returns cash flow metrics for multiple periods with savings rate",
+)
+async def get_cash_flow_metrics(
+    current_user: CurrentUserDep,
+    cash_flow_repo: CashFlowRepoDep,
+    periods: int = Query(default=12, ge=1, le=24, description="Number of periods to return"),
+) -> CashFlowMetricsListResponse:
+    periods_data = cash_flow_repo.get_periods_for_user(
+        user_id=current_user.id,
+        limit=periods,
+    )
+
+    avg_savings_rate = cash_flow_repo.get_average_savings_rate(current_user.id, months=6)
+
+    return CashFlowMetricsListResponse(
+        periods=[_to_cash_flow_response(p) for p in periods_data],
+        total_periods=len(periods_data),
+        average_savings_rate=Decimal(str(avg_savings_rate)) if avg_savings_rate is not None else None,
+    )
+
+
+@router.get(
+    "/cash-flow/current",
+    response_model=CashFlowMetricsResponse,
+    summary="Get current month cash flow",
+    description="Returns cash flow metrics for the current month",
+)
+async def get_current_cash_flow(
+    current_user: CurrentUserDep,
+    cash_flow_repo: CashFlowRepoDep,
+) -> CashFlowMetricsResponse:
+    current_period_start = get_current_period_start(PeriodType.MONTHLY)
+
+    metrics = cash_flow_repo.get_by_user_and_period(
+        user_id=current_user.id,
+        period_start=current_period_start,
+    )
+
+    if not metrics:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cash flow metrics not found for current period",
+        )
+
+    return _to_cash_flow_response(metrics)
+
+
+@router.get(
+    "/income-sources",
+    response_model=IncomeSourceListResponse,
+    summary="Get detected income sources",
+    description="Returns all detected income sources for the user",
+)
+async def get_income_sources(
+    current_user: CurrentUserDep,
+    income_source_repo: IncomeSourceRepoDep,
+    active_only: bool = Query(default=True, description="Only return active income sources"),
+) -> IncomeSourceListResponse:
+    sources = income_source_repo.get_by_user_id(
+        user_id=current_user.id,
+        active_only=active_only,
+    )
+
+    high_confidence = income_source_repo.get_high_confidence(current_user.id)
+
+    return IncomeSourceListResponse(
+        sources=[_to_income_source_response(s) for s in sources],
+        total=len(sources),
+        high_confidence_count=len(high_confidence),
+    )
+
+
+@router.post(
+    "/cash-flow/compute",
+    response_model=CashFlowComputationResultResponse,
+    summary="Trigger cash flow computation",
+    description="Triggers computation of cash flow metrics and income detection",
+)
+@limiter.limit(limits.analytics_write)
+async def trigger_cash_flow_computation(
+    request: Request,
+    current_user: CurrentUserDep,
+    cash_flow_aggregator: CashFlowAggregatorDep,
+    force_full: bool = Query(default=False, description="Force full recomputation"),
+) -> CashFlowComputationResultResponse:
+    result = cash_flow_aggregator.compute_for_user(
+        user_id=current_user.id,
+        force_full_recompute=force_full,
+    )
+
+    return CashFlowComputationResultResponse(
+        status=result.status,
+        periods_computed=result.periods_computed,
+        income_sources_detected=result.income_sources_detected,
+        transactions_processed=result.transactions_processed,
+        computation_time_ms=result.computation_time_ms,
+        error_message=result.error_message,
+    )
+
+
+def _to_cash_flow_response(metrics: dict) -> CashFlowMetricsResponse:
+    return CashFlowMetricsResponse(
+        id=UUID(metrics["id"]),
+        user_id=UUID(metrics["user_id"]),
+        period_start=_parse_date(metrics["period_start"]),
+        total_income=Decimal(str(metrics["total_income"])),
+        total_expenses=Decimal(str(metrics["total_expenses"])),
+        net_cash_flow=Decimal(str(metrics["net_cash_flow"])),
+        savings_rate=Decimal(str(metrics["savings_rate"])) if metrics.get("savings_rate") else None,
+        recurring_expenses=Decimal(str(metrics["recurring_expenses"])),
+        discretionary_expenses=Decimal(str(metrics["discretionary_expenses"])),
+        income_sources_count=metrics["income_sources_count"],
+        expense_categories_count=metrics["expense_categories_count"],
+        largest_expense_category=metrics.get("largest_expense_category"),
+        largest_expense_amount=(
+            Decimal(str(metrics["largest_expense_amount"]))
+            if metrics.get("largest_expense_amount") else None
+        ),
+        created_at=metrics["created_at"],
+        updated_at=metrics["updated_at"],
+    )
+
+
+def _to_income_source_response(source: dict) -> IncomeSourceResponse:
+    return IncomeSourceResponse(
+        id=UUID(source["id"]),
+        user_id=UUID(source["user_id"]),
+        source_name=source["source_name"],
+        source_type=source["source_type"],
+        frequency=source["frequency"],
+        average_amount=Decimal(str(source["average_amount"])),
+        last_amount=Decimal(str(source["last_amount"])),
+        first_date=_parse_date(source["first_date"]),
+        last_date=_parse_date(source["last_date"]),
+        next_expected_date=_parse_date(source["next_expected_date"]) if source.get("next_expected_date") else None,
+        transaction_count=source["transaction_count"],
+        confidence_score=Decimal(str(source["confidence_score"])),
+        is_active=source["is_active"],
+        account_id=UUID(source["account_id"]) if source.get("account_id") else None,
+        created_at=source["created_at"],
+        updated_at=source["updated_at"],
     )
 
 

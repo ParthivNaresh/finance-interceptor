@@ -366,3 +366,75 @@ class CategorySpendingHistoryItem(BaseModel):
     total_amount: Decimal
     transaction_count: int
     average_transaction: Decimal | None = None
+
+
+class CashFlowMetricsResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    user_id: UUID
+    period_start: date
+    total_income: Decimal
+    total_expenses: Decimal
+    net_cash_flow: Decimal
+    savings_rate: Decimal | None
+    recurring_expenses: Decimal
+    discretionary_expenses: Decimal
+    income_sources_count: int
+    expense_categories_count: int
+    largest_expense_category: str | None
+    largest_expense_amount: Decimal | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CashFlowMetricsSummary(BaseModel):
+    period_start: date
+    total_income: Decimal
+    total_expenses: Decimal
+    net_cash_flow: Decimal
+    savings_rate: Decimal | None
+    recurring_expenses: Decimal
+    discretionary_expenses: Decimal
+
+
+class CashFlowMetricsListResponse(BaseModel):
+    periods: list[CashFlowMetricsResponse]
+    total_periods: int
+    average_savings_rate: Decimal | None = None
+
+
+class IncomeSourceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    user_id: UUID
+    source_name: str
+    source_type: str
+    frequency: str
+    average_amount: Decimal
+    last_amount: Decimal
+    first_date: date
+    last_date: date
+    next_expected_date: date | None
+    transaction_count: int
+    confidence_score: Decimal
+    is_active: bool
+    account_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class IncomeSourceListResponse(BaseModel):
+    sources: list[IncomeSourceResponse]
+    total: int
+    high_confidence_count: int
+
+
+class CashFlowComputationResultResponse(BaseModel):
+    status: ComputationStatus
+    periods_computed: int
+    income_sources_detected: int
+    transactions_processed: int
+    computation_time_ms: int
+    error_message: str | None = None

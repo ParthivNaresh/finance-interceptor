@@ -1,3 +1,11 @@
+from services.analytics.cash_flow_aggregator import (
+    COMPUTATION_TYPE_CASH_FLOW,
+    CashFlowAggregator,
+    CashFlowAggregatorContainer,
+    CashFlowComputationResult,
+    CashFlowMetrics,
+    get_cash_flow_aggregator,
+)
 from services.analytics.computation_manager import (
     COMPUTATION_TYPE_SPENDING,
     ComputationResult,
@@ -5,6 +13,14 @@ from services.analytics.computation_manager import (
     SpendingComputationManager,
     SpendingComputationManagerContainer,
     get_spending_computation_manager,
+)
+from services.analytics.income_detector import (
+    CONFIDENCE_THRESHOLD_AUTO_INCLUDE,
+    DetectedIncomeSource,
+    IncomeDetectionResult,
+    IncomeDetector,
+    IncomeDetectorContainer,
+    get_income_detector,
 )
 from services.analytics.merchant_stats_aggregator import (
     COMPUTATION_TYPE_MERCHANT_STATS,
@@ -35,10 +51,20 @@ from services.analytics.transfer_detector import (
 )
 
 __all__ = [
+    "COMPUTATION_TYPE_CASH_FLOW",
     "COMPUTATION_TYPE_MERCHANT_STATS",
     "COMPUTATION_TYPE_SPENDING",
+    "CONFIDENCE_THRESHOLD_AUTO_INCLUDE",
     "AggregationResult",
+    "CashFlowAggregator",
+    "CashFlowAggregatorContainer",
+    "CashFlowComputationResult",
+    "CashFlowMetrics",
     "ComputationResult",
+    "DetectedIncomeSource",
+    "IncomeDetectionResult",
+    "IncomeDetector",
+    "IncomeDetectorContainer",
     "MerchantStatsAggregator",
     "MerchantStatsAggregatorContainer",
     "SpendingAggregator",
@@ -48,7 +74,9 @@ __all__ = [
     "SpendingComputationManagerContainer",
     "TransferDetector",
     "TransferDetectorContainer",
+    "get_cash_flow_aggregator",
     "get_current_period_start",
+    "get_income_detector",
     "get_merchant_stats_aggregator",
     "get_months_between",
     "get_next_period_start",
