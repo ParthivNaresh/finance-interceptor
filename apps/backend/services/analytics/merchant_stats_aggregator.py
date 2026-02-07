@@ -82,14 +82,14 @@ class MerchantStatsAggregator:
                 computation_time_ms=duration_ms,
             )
 
-        except Exception as e:
+        except Exception:
             duration_ms = int((time.monotonic() - start_time) * 1000)
             return MerchantStatsComputationResult(
                 status=ComputationStatus.FAILED,
                 merchants_computed=0,
                 transactions_processed=0,
                 computation_time_ms=duration_ms,
-                error_message=str(e),
+                error_message="Merchant stats computation failed",
             )
 
     def _fetch_and_group_transactions(

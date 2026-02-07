@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import hmac
-import time
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from config import get_settings
+from errors import ExternalServiceError
 from models.webhook import (
     ItemWebhookCode,
     PlaidWebhookRequest,
@@ -30,12 +29,6 @@ if TYPE_CHECKING:
 logger = get_logger("services.webhook")
 
 
-class WebhookVerificationError(Exception):
-    def __init__(self, message: str = "Webhook verification failed") -> None:
-        self.message = message
-        super().__init__(self.message)
-
-
 class WebhookProcessingError(Exception):
     def __init__(self, message: str = "Webhook processing failed") -> None:
         self.message = message
@@ -43,8 +36,6 @@ class WebhookProcessingError(Exception):
 
 
 class WebhookService:
-    _SIGNATURE_TOLERANCE_SECONDS = 300
-
     def __init__(
         self,
         webhook_event_repo: WebhookEventRepository,
@@ -63,43 +54,6 @@ class WebhookService:
         self._merchant_stats_aggregator = merchant_stats_aggregator
         self._task_queue_service = task_queue_service
         self._settings = get_settings()
-
-    def verify_signature(
-        self,
-        body: bytes,
-        plaid_signature: str,
-        webhook_secret: str,
-    ) -> bool:
-        try:
-            signed_jwt = plaid_signature
-            parts = signed_jwt.split(".")
-            if len(parts) != 3:
-                logger.warning(
-                    "webhook.signature.invalid_format",
-                    parts_count=len(parts),
-                )
-                return False
-
-            header_b64, payload_b64, signature_b64 = parts
-
-            message = f"{header_b64}.{payload_b64}"
-            expected_signature = hmac.new(
-                webhook_secret.encode(),
-                message.encode(),
-                hashlib.sha256,
-            ).hexdigest()
-
-            is_valid = hmac.compare_digest(expected_signature, signature_b64)
-            if not is_valid:
-                logger.warning("webhook.signature.mismatch")
-            return is_valid
-        except Exception:
-            logger.exception("webhook.signature.verification_error")
-            return False
-
-    def verify_timestamp(self, timestamp: int) -> bool:
-        current_time = int(time.time())
-        return abs(current_time - timestamp) <= self._SIGNATURE_TOLERANCE_SECONDS
 
     def generate_idempotency_key(self, webhook: PlaidWebhookRequest) -> str:
         key_parts = [
@@ -190,16 +144,19 @@ class WebhookService:
                 error_message=f"Unknown webhook type: {webhook.webhook_type}",
             )
         except Exception as e:
-            log.exception(
-                "webhook.processing_failed",
-                error=str(e),
-            )
+            log.exception("webhook.processing_failed")
             self._webhook_event_repo.update_status(
                 event_id,
                 WebhookEventStatus.FAILED,
-                error_message=str(e),
+                error_message="Processing failed",
             )
-            raise WebhookProcessingError(str(e)) from e
+            raise ExternalServiceError(
+                message="Webhook processing failed",
+                code="FI-502-WEBHOOK",
+                details={
+                    "component": "webhook_processor",
+                },
+            ) from e
 
     def process_webhook(self, webhook: PlaidWebhookRequest, event_id: UUID) -> None:
         asyncio.get_event_loop().run_until_complete(
@@ -354,15 +311,12 @@ class WebhookService:
                 await self._trigger_analytics_computation_async(user_id, log)
 
             self._webhook_event_repo.update_status(event_id, WebhookEventStatus.COMPLETED)
-        except Exception as e:
-            log.exception(
-                "webhook.transaction_sync.failed",
-                error=str(e),
-            )
+        except Exception:
+            log.exception("webhook.transaction_sync.failed")
             self._webhook_event_repo.update_status(
                 event_id,
                 WebhookEventStatus.FAILED,
-                error_message=f"Sync failed: {e}",
+                error_message="Transaction sync failed",
             )
             raise
 
@@ -385,15 +339,12 @@ class WebhookService:
             self._recurring_sync_service.sync_for_plaid_item(plaid_item_id)
             log.info("webhook.recurring_sync.completed")
             self._webhook_event_repo.update_status(event_id, WebhookEventStatus.COMPLETED)
-        except Exception as e:
-            log.exception(
-                "webhook.recurring_sync.failed",
-                error=str(e),
-            )
+        except Exception:
+            log.exception("webhook.recurring_sync.failed")
             self._webhook_event_repo.update_status(
                 event_id,
                 WebhookEventStatus.FAILED,
-                error_message=f"Recurring sync failed: {e}",
+                error_message="Recurring sync failed",
             )
             raise
 
@@ -410,11 +361,8 @@ class WebhookService:
                     defer_seconds=result.defer_seconds,
                 )
                 return
-            except Exception as e:
-                analytics_log.warning(
-                    "webhook.analytics.enqueue_failed",
-                    error=str(e),
-                )
+            except Exception:
+                analytics_log.warning("webhook.analytics.enqueue_failed")
 
         self._run_analytics_sync(user_id, analytics_log)
 
@@ -426,11 +374,8 @@ class WebhookService:
                 periods_computed=result.periods_computed,
                 transactions_processed=result.transactions_processed,
             )
-        except Exception as e:
-            log.warning(
-                "webhook.analytics.spending_failed",
-                error=str(e),
-            )
+        except Exception:
+            log.warning("webhook.analytics.spending_failed")
 
         try:
             stats_result = self._merchant_stats_aggregator.compute_for_user(user_id)
@@ -439,11 +384,8 @@ class WebhookService:
                 merchants_computed=stats_result.merchants_computed,
                 transactions_processed=stats_result.transactions_processed,
             )
-        except Exception as e:
-            log.warning(
-                "webhook.analytics.merchant_stats_failed",
-                error=str(e),
-            )
+        except Exception:
+            log.warning("webhook.analytics.merchant_stats_failed")
 
 
 class WebhookServiceContainer:

@@ -217,12 +217,11 @@ class RecurringSyncService:
             try:
                 result = self.sync_for_plaid_item(UUID(item["id"]))
                 results.append(result)
-            except RecurringSyncError as e:
+            except RecurringSyncError:
                 errors += 1
                 log.warning(
                     "recurring_sync.item_sync_failed",
                     plaid_item_id=item["id"],
-                    error=str(e),
                 )
                 continue
 

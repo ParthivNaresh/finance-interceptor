@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from errors import UnauthorizedError
 from models.auth import AuthenticatedUser
 from observability import bind_context, get_logger
 from services.database import DatabaseService, get_database_service
@@ -24,7 +25,7 @@ class AuthService:
 
             if user is None:
                 logger.warning("auth.token_invalid", reason="no_user_found")
-                raise AuthenticationError("Invalid token: no user found")
+                raise UnauthorizedError(message="Invalid or expired token")
 
             authenticated_user = AuthenticatedUser(
                 id=UUID(user.id),
@@ -40,7 +41,7 @@ class AuthService:
             )
 
             return authenticated_user
-        except AuthenticationError:
+        except UnauthorizedError:
             raise
         except Exception as e:
             error_message = str(e)
@@ -49,9 +50,10 @@ class AuthService:
                     "auth.token_invalid",
                     reason="invalid_or_expired",
                 )
-                raise AuthenticationError(f"Invalid token: {error_message}") from e
+                raise UnauthorizedError(message="Invalid or expired token") from e
+
             logger.exception("auth.validation_failed")
-            raise AuthenticationError(f"Token validation failed: {error_message}") from e
+            raise UnauthorizedError(message="Token validation failed") from e
 
 
 class AuthServiceContainer:

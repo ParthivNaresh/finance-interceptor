@@ -1,49 +1,82 @@
+from __future__ import annotations
+
 import base64
 import os
 import secrets
+from typing import ClassVar
 
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from argon2.low_level import Type, hash_secret_raw
+from cryptography.fernet import Fernet, InvalidToken
 
 from config import get_settings
-
-
-class EncryptionError(Exception):
-    def __init__(self, message: str = "Encryption operation failed") -> None:
-        self.message = message
-        super().__init__(self.message)
+from errors import EncryptionError
 
 
 class EncryptionService:
-    def __init__(self, encryption_key: str) -> None:
-        self._fernet = self._create_fernet(encryption_key)
+    _VERSION_1: ClassVar[bytes] = b"\x01"
+    _SALT_LENGTH: ClassVar[int] = 16
+    _ARGON2_TIME_COST: ClassVar[int] = 3
+    _ARGON2_MEMORY_COST: ClassVar[int] = 65536
+    _ARGON2_PARALLELISM: ClassVar[int] = 4
+    _ARGON2_HASH_LENGTH: ClassVar[int] = 32
 
-    def _create_fernet(self, key: str) -> Fernet:
-        key_bytes = key.encode()
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=b"finance_interceptor_salt",
-            iterations=100000,
-        )
-        derived_key = base64.urlsafe_b64encode(kdf.derive(key_bytes))
-        return Fernet(derived_key)
+    def __init__(self, encryption_key: str) -> None:
+        self._key = encryption_key.encode("utf-8")
 
     def encrypt(self, plaintext: str) -> str:
-        try:
-            encrypted = self._fernet.encrypt(plaintext.encode())
-            return base64.urlsafe_b64encode(encrypted).decode()
-        except Exception as e:
-            raise EncryptionError(f"Failed to encrypt: {e}") from e
+        salt = os.urandom(self._SALT_LENGTH)
+        fernet = self._derive_fernet(salt)
 
-    def decrypt(self, ciphertext: str) -> str:
         try:
-            encrypted = base64.urlsafe_b64decode(ciphertext.encode())
-            decrypted = self._fernet.decrypt(encrypted)
-            return decrypted.decode()
+            ciphertext = fernet.encrypt(plaintext.encode("utf-8"))
         except Exception as e:
-            raise EncryptionError(f"Failed to decrypt: {e}") from e
+            raise EncryptionError(message="Encryption operation failed") from e
+
+        payload = self._VERSION_1 + salt + ciphertext
+        return base64.urlsafe_b64encode(payload).decode("ascii")
+
+    def decrypt(self, encoded: str) -> str:
+        try:
+            payload = base64.urlsafe_b64decode(encoded.encode("ascii"))
+        except Exception as e:
+            raise EncryptionError(message="Invalid ciphertext format") from e
+
+        if len(payload) < 1 + self._SALT_LENGTH:
+            raise EncryptionError(message="Ciphertext too short")
+
+        version = payload[0:1]
+
+        if version == self._VERSION_1:
+            return self._decrypt_v1(payload)
+
+        raise EncryptionError(message=f"Unsupported encryption version: {version.hex()}")
+
+    def _decrypt_v1(self, payload: bytes) -> str:
+        salt = payload[1 : 1 + self._SALT_LENGTH]
+        ciphertext = payload[1 + self._SALT_LENGTH :]
+
+        fernet = self._derive_fernet(salt)
+
+        try:
+            plaintext_bytes = fernet.decrypt(ciphertext)
+            return plaintext_bytes.decode("utf-8")
+        except InvalidToken as e:
+            raise EncryptionError(message="Decryption failed: invalid key or corrupted data") from e
+        except Exception as e:
+            raise EncryptionError(message="Decryption operation failed") from e
+
+    def _derive_fernet(self, salt: bytes) -> Fernet:
+        derived_key = hash_secret_raw(
+            secret=self._key,
+            salt=salt,
+            time_cost=self._ARGON2_TIME_COST,
+            memory_cost=self._ARGON2_MEMORY_COST,
+            parallelism=self._ARGON2_PARALLELISM,
+            hash_len=self._ARGON2_HASH_LENGTH,
+            type=Type.ID,
+        )
+        fernet_key = base64.urlsafe_b64encode(derived_key)
+        return Fernet(fernet_key)
 
     @staticmethod
     def generate_key() -> str:

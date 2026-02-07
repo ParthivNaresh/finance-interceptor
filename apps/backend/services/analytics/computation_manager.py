@@ -95,14 +95,13 @@ class SpendingComputationManager:
                 computation_time_ms=duration_ms,
             )
 
-        except Exception as e:
+        except Exception:
             duration_ms = int((time.monotonic() - start_time) * 1000)
-            error_message = str(e)
 
             self._computation_log_repo.mark_failed(
                 user_id=user_id,
                 computation_type=COMPUTATION_TYPE_SPENDING,
-                error_message=error_message,
+                error_message="Spending computation failed",
                 duration_ms=duration_ms,
             )
 
@@ -113,7 +112,7 @@ class SpendingComputationManager:
                 merchants_computed=0,
                 transactions_processed=0,
                 computation_time_ms=duration_ms,
-                error_message=error_message,
+                error_message="Spending computation failed",
             )
 
     def compute_current_month(self, user_id: UUID) -> ComputationResult:
@@ -134,7 +133,7 @@ class SpendingComputationManager:
                 computation_time_ms=duration_ms,
             )
 
-        except Exception as e:
+        except Exception:
             duration_ms = int((time.monotonic() - start_time) * 1000)
             return ComputationResult(
                 status=ComputationStatus.FAILED,
@@ -143,7 +142,7 @@ class SpendingComputationManager:
                 merchants_computed=0,
                 transactions_processed=0,
                 computation_time_ms=duration_ms,
-                error_message=str(e),
+                error_message="Spending computation failed",
             )
 
     def compute_historical(
@@ -181,7 +180,7 @@ class SpendingComputationManager:
                 computation_time_ms=duration_ms,
             )
 
-        except Exception as e:
+        except Exception:
             duration_ms = int((time.monotonic() - start_time) * 1000)
             return ComputationResult(
                 status=ComputationStatus.FAILED,
@@ -190,7 +189,7 @@ class SpendingComputationManager:
                 merchants_computed=0,
                 transactions_processed=0,
                 computation_time_ms=duration_ms,
-                error_message=str(e),
+                error_message="Spending computation failed",
             )
 
     def finalize_past_periods(

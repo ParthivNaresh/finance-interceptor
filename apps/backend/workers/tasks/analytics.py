@@ -54,7 +54,7 @@ async def compute_analytics_for_user(ctx: dict[str, Any], user_id: str) -> dict[
             raise Retry(defer=ctx.get("job_try", 1) * 10) from e
         raise
     except Exception as e:
-        log.exception("task.analytics.unexpected_error", error=str(e))
+        log.exception("task.analytics.unexpected_error")
         clear_context()
         raise Retry(defer=ctx.get("job_try", 1) * 10) from e
 
@@ -84,8 +84,8 @@ def _execute_analytics(
         )
     except Exception as e:
         spending_error = e
-        errors.append(f"Spending computation failed: {e}")
-        log.warning("task.analytics.spending_failed", error=str(e))
+        errors.append("Spending computation failed")
+        log.warning("task.analytics.spending_failed")
 
     try:
         merchant_result = worker_context.merchant_aggregator.compute_for_user(user_id)
@@ -98,12 +98,12 @@ def _execute_analytics(
         )
     except Exception as e:
         merchant_error = e
-        errors.append(f"Merchant stats computation failed: {e}")
-        log.warning("task.analytics.merchant_stats_failed", error=str(e))
+        errors.append("Merchant stats computation failed")
+        log.warning("task.analytics.merchant_stats_failed")
 
     if spending_error and merchant_error:
         raise AnalyticsTaskError(
-            f"Both computations failed: {spending_error}; {merchant_error}",
+            "Both computations failed",
             retryable=True,
         )
 

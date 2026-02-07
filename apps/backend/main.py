@@ -1,11 +1,19 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
 from config import get_settings
+from errors import DomainError
+from middleware.exceptions import (
+    domain_error_handler,
+    http_exception_handler,
+    request_validation_error_handler,
+    unhandled_exception_handler,
+)
 from middleware.rate_limit import get_limiter, rate_limit_exceeded_handler
 from observability import RequestLoggingMiddleware, configure_logging, get_logger
 from repositories.account import AccountRepositoryContainer
@@ -23,6 +31,8 @@ from services.recurring import AlertDetectionServiceContainer, RecurringSyncServ
 from services.task_queue import TaskQueueServiceContainer
 from services.transaction_sync import TransactionSyncServiceContainer
 from services.webhook import WebhookServiceContainer
+from services.webhook_key_cache import WebhookKeyCacheContainer
+from services.webhook_verification import PlaidWebhookVerifierContainer
 
 settings = get_settings()
 
@@ -60,13 +70,20 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     RecurringSyncServiceContainer.get()
     TaskQueueServiceContainer.get()
     WebhookServiceContainer.get()
+    WebhookKeyCacheContainer.get()
+    PlaidWebhookVerifierContainer.get()
 
-    logger.info("application.ready")
+    logger.info(
+        "application.ready",
+        webhook_verification_enabled=settings.plaid_webhook_verification_enabled,
+    )
 
     yield
 
     logger.info("application.shutdown")
 
+    PlaidWebhookVerifierContainer.reset()
+    WebhookKeyCacheContainer.reset()
     WebhookServiceContainer.reset()
     await TaskQueueServiceContainer.close()
     RecurringSyncServiceContainer.reset()
@@ -96,14 +113,24 @@ def create_app() -> FastAPI:
     application.state.limiter = limiter
     application.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
+    application.add_exception_handler(DomainError, domain_error_handler)
+    application.add_exception_handler(RequestValidationError, request_validation_error_handler)
+    application.add_exception_handler(HTTPException, http_exception_handler)
+    application.add_exception_handler(Exception, unhandled_exception_handler)
+
     application.add_middleware(RequestLoggingMiddleware)
+
+    cors_origins = settings.get_cors_allowed_origins()
+    if settings.is_production() and not cors_origins:
+        raise RuntimeError("CORS is not configured for production. Set CORS_ALLOWED_ORIGINS.")
 
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=cors_origins,
+        allow_credentials=settings.cors_allow_credentials,
+        allow_methods=settings.get_cors_allowed_methods(),
+        allow_headers=settings.get_cors_allowed_headers(),
+        expose_headers=settings.get_cors_exposed_headers(),
     )
 
     application.include_router(api_router)

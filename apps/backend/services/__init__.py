@@ -55,7 +55,6 @@ from services.webhook import (
     WebhookProcessingError,
     WebhookService,
     WebhookServiceContainer,
-    WebhookVerificationError,
     get_webhook_service,
 )
 
@@ -97,7 +96,6 @@ __all__ = [
     "WebhookProcessingError",
     "WebhookService",
     "WebhookServiceContainer",
-    "WebhookVerificationError",
     "get_alert_detection_service",
     "get_auth_service",
     "get_database_service",

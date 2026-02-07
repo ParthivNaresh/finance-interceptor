@@ -3,6 +3,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from errors import ExternalServiceError, InvalidRequestError
+
 from middleware.auth import get_current_user
 from middleware.rate_limit import get_limiter, get_rate_limits
 from models.auth import AuthenticatedUser
@@ -51,9 +53,9 @@ async def create_link_token(
             request_id=result["request_id"],
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+        raise ExternalServiceError(
+            message="Failed to create Plaid link token",
+            details={"provider": "plaid"},
         ) from e
 
 
@@ -196,9 +198,9 @@ async def exchange_public_token(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+        raise InvalidRequestError(
+            message="Failed to exchange Plaid public token",
+            details={"provider": "plaid"},
         ) from e
 
 

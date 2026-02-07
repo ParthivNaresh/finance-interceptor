@@ -410,7 +410,22 @@ PLAID_WEBHOOK_URL=https://abc123.ngrok-free.dev/api/webhooks/plaid
 
 **Important:** The ngrok URL changes every time you restart ngrok (on free plan). Update `.env` and restart the backend each time.
 
-### 4. Monitor Webhooks
+### 4. Enable Webhook Verification (Optional)
+
+For production-like testing, enable Plaid's JWT signature verification:
+```env
+PLAID_WEBHOOK_VERIFICATION_ENABLED=true
+```
+
+When enabled:
+- Webhooks without valid `Plaid-Verification` headers are rejected (401)
+- Plaid's public keys are fetched and cached in Redis for 24 hours
+- Token age is validated (must be <5 minutes old)
+- Request body hash is verified
+
+**Note:** Keep this `false` for local testing with curl. Set to `true` when testing with real Plaid webhooks via ngrok.
+
+### 5. Monitor Webhooks
 
 Open http://127.0.0.1:4040 to see incoming webhook requests.
 
@@ -584,6 +599,9 @@ pod install --repo-update
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
 | `TASK_QUEUE_ENABLED` | Enable background jobs | `true` |
 | `TASK_DEBOUNCE_SECONDS` | Debounce delay for analytics | `30` |
+| `PLAID_WEBHOOK_VERIFICATION_ENABLED` | Enable webhook JWT verification | `false` (dev) / `true` (prod) |
+| `WEBHOOK_KEY_CACHE_TTL_SECONDS` | Plaid key cache TTL | `86400` (24 hours) |
+| `WEBHOOK_VERIFICATION_TIMEOUT_SECONDS` | Plaid API timeout | `10.0` |
 
 ### Mobile (`apps/mobile/.env`)
 

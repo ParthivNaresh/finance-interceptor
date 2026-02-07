@@ -212,9 +212,44 @@ Set `TASK_QUEUE_ENABLED=false` to disable background processing (analytics runs 
 
 ---
 
-## Rate Limiting
+## Webhook Verification
 
-API endpoints are protected by rate limiting using slowapi with Redis storage.
+Plaid webhooks are verified using ES256 JWT signatures per Plaid's security specification.
+
+### How It Works
+1. Plaid signs each webhook with a JWT in the `Plaid-Verification` header
+2. The JWT contains a SHA-256 hash of the request body and an `iat` (issued at) timestamp
+3. Our backend fetches Plaid's public key (JWK) and verifies the signature
+4. Keys are cached in Redis for 24 hours
+
+### Verification Flow
+```
+Webhook arrives → Extract JWT header → Validate alg=ES256
+    → Fetch public key (cache-first) → Verify signature
+    → Check token age (<5 min) → Verify body hash
+    → Process webhook
+```
+
+### Configuration
+```env
+PLAID_WEBHOOK_VERIFICATION_ENABLED=false  # Enable in production
+WEBHOOK_KEY_CACHE_TTL_SECONDS=86400       # 24-hour key cache
+WEBHOOK_VERIFICATION_TIMEOUT_SECONDS=10.0  # Plaid API timeout
+```
+
+### Key Files
+- `services/webhook_verification.py` - Core verification logic
+- `services/webhook_key_cache.py` - Redis-backed key caching
+- `models/webhook_verification.py` - Domain models (JWKPublicKey, etc.)
+- `errors.py` - WebhookVerificationError (401 response)
+
+### Testing Locally
+Set `PLAID_WEBHOOK_VERIFICATION_ENABLED=false` for local development with curl.
+Set to `true` when testing with ngrok + real Plaid webhooks.
+
+---
+
+## Rate Limiting
 
 ### Rate Limit Tiers
 
@@ -268,6 +303,49 @@ RATE_LIMIT_DEFAULT=60/minute
 ```
 
 Set `RATE_LIMIT_ENABLED=false` to disable rate limiting (development only).
+
+---
+
+## Encryption
+
+Plaid access tokens are encrypted at rest using Argon2id key derivation and Fernet (AES-128-CBC + HMAC).
+
+### Encryption Format
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Encrypted Token Format v1                     │
+├─────────────────────────────────────────────────────────────────┤
+│ Version (1 byte) │ Salt (16 bytes) │ Fernet Ciphertext (N bytes)│
+│      0x01        │    random        │   AES-128-CBC + HMAC      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Argon2id Parameters (OWASP "Moderate" Profile)
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `time_cost` | 3 | Number of iterations |
+| `memory_cost` | 65536 | 64 MB of RAM |
+| `parallelism` | 4 | 4 parallel threads |
+| `hash_len` | 32 | 256-bit derived key |
+
+### Security Features
+- **Random salt per encryption**: Each encrypted value has a unique 16-byte salt
+- **Memory-hard KDF**: Argon2id is resistant to GPU/ASIC attacks
+- **Version byte**: Allows future algorithm changes without breaking existing data
+- **Authenticated encryption**: Fernet provides both confidentiality and integrity
+
+### Key Files
+- `services/encryption.py` - EncryptionService with encrypt/decrypt
+- `config.py` - ENCRYPTION_KEY setting
+
+### Usage
+```python
+from services.encryption import get_encryption_service
+
+encryption = get_encryption_service()
+ciphertext = encryption.encrypt("access-token-here")
+plaintext = encryption.decrypt(ciphertext)
+```
 
 ---
 

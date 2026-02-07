@@ -13,6 +13,7 @@ from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUse
 from plaid.model.products import Products
 from plaid.model.transactions_recurring_get_request import TransactionsRecurringGetRequest
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
+from plaid.model.webhook_verification_key_get_request import WebhookVerificationKeyGetRequest
 
 from config import Settings, get_settings
 from models.transaction import PlaidTransactionData
@@ -329,6 +330,23 @@ class PlaidService:
             outflow_streams=outflow_streams,
             updated_datetime=response_dict.get("updated_datetime"),
         )
+
+    def get_webhook_verification_key(self, key_id: str) -> dict[str, Any]:
+        log = logger.bind(key_id=key_id)
+        log.debug("plaid.webhook_verification_key.fetching")
+
+        request = WebhookVerificationKeyGetRequest(key_id=key_id)
+        response = self._client.webhook_verification_key_get(request)
+
+        key_data = response.to_dict().get("key", {})
+
+        log.debug(
+            "plaid.webhook_verification_key.fetched",
+            key_alg=key_data.get("alg"),
+            key_kty=key_data.get("kty"),
+        )
+
+        return key_data
 
     def _parse_transaction(self, txn: Any) -> PlaidTransactionData:
         location = txn.location

@@ -10,6 +10,7 @@ from arq.connections import ArqRedis, RedisSettings
 from arq.jobs import Job, JobStatus
 
 from config import Settings, get_settings
+from errors import TaskQueueError
 from observability import get_logger
 
 if TYPE_CHECKING:
@@ -28,12 +29,6 @@ class EnqueueResult:
     job_id: str
     was_debounced: bool
     defer_seconds: int
-
-
-class TaskQueueError(Exception):
-    def __init__(self, message: str = "Task queue operation failed") -> None:
-        self.message = message
-        super().__init__(self.message)
 
 
 class TaskQueueService:
@@ -82,8 +77,8 @@ class TaskQueueService:
 
             return status, False
 
-        except Exception as e:
-            logger.warning("task_queue.status_check_failed", job_id=job_id, error=str(e))
+        except Exception:
+            logger.warning("task_queue.status_check_failed", job_id=job_id)
             return None, False
 
     async def enqueue_analytics_computation(

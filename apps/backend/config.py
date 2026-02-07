@@ -9,6 +9,11 @@ LogFormat = Literal["json", "console"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
+def _parse_csv(value: str) -> list[str]:
+    items = [item.strip() for item in value.split(",")]
+    return [item for item in items if item]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -17,16 +22,57 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    cors_allowed_origins: str = Field(
+        default="",
+        description="Comma-separated list of allowed CORS origins. Empty means deny all in production.",
+    )
+    cors_allow_credentials: bool = Field(
+        default=False,
+        description="Allow cookies/credentialed CORS requests. Keep false unless using cookie-based auth.",
+    )
+    cors_allowed_methods: str = Field(
+        default="GET,POST,PUT,PATCH,DELETE,OPTIONS",
+        description="Comma-separated list of allowed CORS methods.",
+    )
+    cors_allowed_headers: str = Field(
+        default="Authorization,Content-Type,X-Request-ID",
+        description="Comma-separated list of allowed CORS headers.",
+    )
+    cors_exposed_headers: str = Field(
+        default="X-Request-ID",
+        description="Comma-separated list of CORS exposed headers.",
+    )
+
+    def get_cors_allowed_origins(self) -> list[str]:
+        return _parse_csv(self.cors_allowed_origins)
+
+    def get_cors_allowed_methods(self) -> list[str]:
+        return _parse_csv(self.cors_allowed_methods)
+
+    def get_cors_allowed_headers(self) -> list[str]:
+        return _parse_csv(self.cors_allowed_headers)
+
+    def get_cors_exposed_headers(self) -> list[str]:
+        return _parse_csv(self.cors_exposed_headers)
+
     plaid_client_id: str
     plaid_secret: str
     plaid_environment: PlaidEnvironment = "sandbox"
-    plaid_webhook_secret: str = Field(
-        default="",
-        description="Secret for verifying Plaid webhook signatures (not needed for sandbox)",
-    )
     plaid_webhook_url: str = Field(
         default="",
         description="URL where Plaid sends webhooks (e.g., ngrok URL for local dev)",
+    )
+    plaid_webhook_verification_enabled: bool = Field(
+        default=False,
+        description="Enable Plaid webhook JWT signature verification. Must be True in production.",
+    )
+    webhook_key_cache_ttl_seconds: int = Field(
+        default=86400,
+        description="TTL in seconds for cached Plaid webhook verification keys (default: 24 hours)",
+    )
+    webhook_verification_timeout_seconds: float = Field(
+        default=10.0,
+        description="Timeout in seconds for Plaid webhook verification key fetch requests",
     )
 
     supabase_url: str = Field(description="Supabase project URL")

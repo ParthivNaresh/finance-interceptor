@@ -180,6 +180,8 @@ Pre-computed, rule-based analytics stored in Supabase. Provides structured insig
 
 ### 8.1 Security
 - [x] Rate limiting (slowapi + Redis, per-user/IP limits)
+- [x] Webhook signature verification (ES256 JWT, Plaid JWK)
+- [x] Encryption upgrade (Argon2id KDF, per-encryption random salt)
 - [ ] Input validation audit
 - [ ] Security headers
 - [ ] Penetration testing
