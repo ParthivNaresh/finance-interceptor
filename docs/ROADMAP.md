@@ -182,8 +182,10 @@ Pre-computed, rule-based analytics stored in Supabase. Provides structured insig
 - [x] Rate limiting (slowapi + Redis, per-user/IP limits)
 - [x] Webhook signature verification (ES256 JWT, Plaid JWK)
 - [x] Encryption upgrade (Argon2id KDF, per-encryption random salt)
+- [x] Auth error handling (RFC 7235 compliant WWW-Authenticate headers)
+- [x] Production safety defaults (debug=false, startup validation for production config)
 - [ ] Input validation audit
-- [ ] Security headers
+- [ ] Security headers (CORS configured, CSP/X-Frame-Options pending)
 - [ ] Penetration testing
 - [x] Environment-based secrets (mobile credentials moved from app.json to .env)
 

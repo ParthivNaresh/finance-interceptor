@@ -102,6 +102,14 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 
 
 def create_app() -> FastAPI:
+    production_errors = settings.validate_production_settings()
+    if production_errors:
+        for error in production_errors:
+            logger.error("application.config_error", error=error)
+        raise RuntimeError(
+            f"Production configuration errors: {'; '.join(production_errors)}"
+        )
+
     application = FastAPI(
         title="Finance Interceptor API",
         description="Backend API for the Finance Interceptor mobile app",
@@ -120,13 +128,9 @@ def create_app() -> FastAPI:
 
     application.add_middleware(RequestLoggingMiddleware)
 
-    cors_origins = settings.get_cors_allowed_origins()
-    if settings.is_production() and not cors_origins:
-        raise RuntimeError("CORS is not configured for production. Set CORS_ALLOWED_ORIGINS.")
-
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=cors_origins,
+        allow_origins=settings.get_cors_allowed_origins(),
         allow_credentials=settings.cors_allow_credentials,
         allow_methods=settings.get_cors_allowed_methods(),
         allow_headers=settings.get_cors_allowed_headers(),

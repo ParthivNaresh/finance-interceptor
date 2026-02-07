@@ -24,11 +24,11 @@ class Settings(BaseSettings):
 
     cors_allowed_origins: str = Field(
         default="",
-        description="Comma-separated list of allowed CORS origins. Empty means deny all in production.",
+        description="Comma-separated allowed CORS origins. Empty means deny all in production.",
     )
     cors_allow_credentials: bool = Field(
         default=False,
-        description="Allow cookies/credentialed CORS requests. Keep false unless using cookie-based auth.",
+        description="Allow credentialed CORS requests. Keep false unless using cookie-based auth.",
     )
     cors_allowed_methods: str = Field(
         default="GET,POST,PUT,PATCH,DELETE,OPTIONS",
@@ -85,7 +85,10 @@ class Settings(BaseSettings):
 
     app_name: str = "Finance Interceptor"
     app_version: str = "0.1.0"
-    debug: bool = True
+    debug: bool = Field(
+        default=False,
+        description="Enable debug mode. Must be False in production.",
+    )
 
     log_level: LogLevel = Field(
         default="INFO",
@@ -142,6 +145,25 @@ class Settings(BaseSettings):
 
     def is_production(self) -> bool:
         return not self.is_development()
+
+    def validate_production_settings(self) -> list[str]:
+        errors: list[str] = []
+
+        if self.plaid_environment == "production":
+            if self.debug:
+                errors.append("DEBUG must be False when PLAID_ENVIRONMENT=production")
+
+            if not self.plaid_webhook_verification_enabled:
+                errors.append(
+                    "PLAID_WEBHOOK_VERIFICATION_ENABLED must be True in production"
+                )
+
+            if not self.cors_allowed_origins:
+                errors.append(
+                    "CORS_ALLOWED_ORIGINS must be set when PLAID_ENVIRONMENT=production"
+                )
+
+        return errors
 
 
 @lru_cache
