@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+from plaid.exceptions import ApiException
 
 from models.transaction import PlaidTransactionData, TransactionCreate, TransactionSyncResult
 from observability import get_logger
@@ -15,6 +17,9 @@ if TYPE_CHECKING:
     from services.plaid import PlaidService
 
 logger = get_logger("services.transaction_sync")
+
+_MAX_PAGINATION_RETRIES = 3
+_MUTATION_ERROR_CODE = "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION"
 
 
 class TransactionSyncError(Exception):
@@ -63,7 +68,6 @@ class TransactionSyncService:
             raise TransactionSyncError(f"No access token for plaid item: {plaid_item_id}")
 
         access_token = self._encryption_service.decrypt(encrypted_token)
-        cursor = plaid_item.get("sync_cursor")
 
         accounts = self._account_repo.get_by_plaid_item_id(plaid_item_id)
         account_map = {acc["account_id"]: UUID(acc["id"]) for acc in accounts}
@@ -71,8 +75,47 @@ class TransactionSyncService:
         log.debug(
             "transaction_sync.accounts_loaded",
             account_count=len(account_map),
-            has_cursor=cursor is not None,
         )
+
+        for attempt in range(_MAX_PAGINATION_RETRIES):
+            try:
+                return self._execute_sync(
+                    plaid_item_id, access_token, account_map, attempt, log
+                )
+            except ApiException as e:
+                if self._is_mutation_error(e) and attempt < _MAX_PAGINATION_RETRIES - 1:
+                    log.warning(
+                        "transaction_sync.mutation_during_pagination",
+                        attempt=attempt + 1,
+                        max_attempts=_MAX_PAGINATION_RETRIES,
+                    )
+                    continue
+                raise
+
+        raise TransactionSyncError("Max pagination retries exceeded")
+
+    def _is_mutation_error(self, error: ApiException) -> bool:
+        if error.body and isinstance(error.body, str):
+            return _MUTATION_ERROR_CODE in error.body
+        return False
+
+    def _execute_sync(
+        self,
+        plaid_item_id: UUID,
+        access_token: str,
+        account_map: dict[str, UUID],
+        attempt: int,
+        log: Any,
+    ) -> TransactionSyncResult:
+        plaid_item = self._plaid_item_repo.get_by_id(plaid_item_id)
+        cursor = plaid_item.get("sync_cursor") if plaid_item else None
+
+        if attempt > 0:
+            log.info(
+                "transaction_sync.restarting_from_cursor",
+                attempt=attempt + 1,
+                has_cursor=cursor is not None,
+            )
 
         total_added = 0
         total_modified = 0

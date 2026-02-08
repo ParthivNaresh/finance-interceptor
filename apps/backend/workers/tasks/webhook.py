@@ -196,6 +196,16 @@ async def _trigger_transaction_sync(
     result: WebhookTaskResult,
     log: Any,
 ) -> None:
+    plaid_item = worker_context.plaid_item_repo.get_by_item_id(item_id)
+    if not plaid_item:
+        log.warning(
+            "task.webhook.plaid_item_not_found_skipping",
+            reason="Item may not be created yet (race condition with token exchange)",
+        )
+        result.status = "skipped"
+        result.errors.append(f"Plaid item not found: {item_id} (may be race condition)")
+        return
+
     try:
         sync_result = worker_context.transaction_sync_service.sync_item(item_id)
         result.transactions_added = sync_result.added
@@ -212,11 +222,6 @@ async def _trigger_transaction_sync(
         result.partial_failure = True
         result.errors.append(f"Transaction sync failed: {e}")
         raise WebhookTaskError("Transaction sync failed", retryable=True) from e
-
-    plaid_item = worker_context.plaid_item_repo.get_by_item_id(item_id)
-    if not plaid_item:
-        log.warning("task.webhook.plaid_item_not_found")
-        return
 
     plaid_item_id = UUID(plaid_item["id"])
     user_id = UUID(plaid_item["user_id"])
