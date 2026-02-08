@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from starlette.background import BackgroundTask
+
 from config import get_settings
-from errors import ExternalServiceError
 from models.webhook import (
     ItemWebhookCode,
     PlaidWebhookRequest,
@@ -20,7 +20,10 @@ from observability import get_logger
 if TYPE_CHECKING:
     from repositories.plaid_item import PlaidItemRepository
     from repositories.webhook_event import WebhookEventRepository
+    from services.analytics.baseline_calculator import BaselineCalculator
+    from services.analytics.cash_flow_aggregator import CashFlowAggregator
     from services.analytics.computation_manager import SpendingComputationManager
+    from services.analytics.creep_scorer import CreepScorer
     from services.analytics.merchant_stats_aggregator import MerchantStatsAggregator
     from services.recurring import RecurringSyncService
     from services.task_queue import TaskQueueService
@@ -44,6 +47,9 @@ class WebhookService:
         recurring_sync_service: RecurringSyncService,
         spending_computation_manager: SpendingComputationManager,
         merchant_stats_aggregator: MerchantStatsAggregator,
+        cash_flow_aggregator: CashFlowAggregator,
+        baseline_calculator: BaselineCalculator,
+        creep_scorer: CreepScorer,
         task_queue_service: TaskQueueService,
     ) -> None:
         self._webhook_event_repo = webhook_event_repo
@@ -52,6 +58,9 @@ class WebhookService:
         self._recurring_sync_service = recurring_sync_service
         self._spending_computation_manager = spending_computation_manager
         self._merchant_stats_aggregator = merchant_stats_aggregator
+        self._cash_flow_aggregator = cash_flow_aggregator
+        self._baseline_calculator = baseline_calculator
+        self._creep_scorer = creep_scorer
         self._task_queue_service = task_queue_service
         self._settings = get_settings()
 
@@ -105,7 +114,12 @@ class WebhookService:
 
         return event_id
 
-    async def process_webhook_async(self, webhook: PlaidWebhookRequest, event_id: UUID) -> None:
+    async def enqueue_processing(
+        self,
+        webhook: PlaidWebhookRequest,
+        event_id: UUID,
+        payload: dict[str, Any],
+    ) -> bool:
         log = logger.bind(
             event_id=str(event_id),
             webhook_type=webhook.webhook_type,
@@ -113,20 +127,64 @@ class WebhookService:
             item_id=webhook.item_id,
         )
 
-        log.info("webhook.processing_started")
+        if self._task_queue_service.is_enabled():
+            try:
+                result = await self._task_queue_service.enqueue_webhook_processing(
+                    event_id=event_id,
+                    webhook_type=webhook.webhook_type,
+                    webhook_code=webhook.webhook_code,
+                    item_id=webhook.item_id,
+                    payload=payload,
+                )
+                log.info(
+                    "webhook.enqueued",
+                    job_id=result.job_id,
+                    enqueued=result.enqueued,
+                )
+                return result.enqueued
+            except Exception:
+                log.warning("webhook.enqueue_failed")
+                return False
+
+        log.debug("webhook.queue_disabled")
+        return False
+
+    def create_fallback_background_task(
+        self,
+        webhook: PlaidWebhookRequest,
+        event_id: UUID,
+    ) -> BackgroundTask:
+        return BackgroundTask(
+            self._process_webhook_sync,
+            webhook,
+            event_id,
+        )
+
+    def _process_webhook_sync(
+        self,
+        webhook: PlaidWebhookRequest,
+        event_id: UUID,
+    ) -> None:
+        log = logger.bind(
+            event_id=str(event_id),
+            webhook_type=webhook.webhook_type,
+            webhook_code=webhook.webhook_code,
+            item_id=webhook.item_id,
+        )
+
+        log.info("webhook.fallback_processing_started")
+
+        self._webhook_event_repo.update_status(event_id, WebhookEventStatus.PROCESSING)
 
         try:
             webhook_type = WebhookType(webhook.webhook_type)
 
             if webhook_type == WebhookType.TRANSACTIONS:
-                await self._handle_transactions_webhook_async(webhook, event_id, log)
+                self._handle_transactions_webhook_sync(webhook, event_id, log)
             elif webhook_type == WebhookType.ITEM:
                 self._handle_item_webhook(webhook, event_id, log)
             else:
-                log.warning(
-                    "webhook.unhandled_type",
-                    status="skipped",
-                )
+                log.warning("webhook.unhandled_type", status="skipped")
                 self._webhook_event_repo.update_status(
                     event_id,
                     WebhookEventStatus.SKIPPED,
@@ -134,36 +192,21 @@ class WebhookService:
                 )
 
         except ValueError:
-            log.warning(
-                "webhook.unknown_type",
-                status="skipped",
-            )
+            log.warning("webhook.unknown_type", status="skipped")
             self._webhook_event_repo.update_status(
                 event_id,
                 WebhookEventStatus.SKIPPED,
                 error_message=f"Unknown webhook type: {webhook.webhook_type}",
             )
-        except Exception as e:
-            log.exception("webhook.processing_failed")
+        except Exception:
+            log.exception("webhook.fallback_processing_failed")
             self._webhook_event_repo.update_status(
                 event_id,
                 WebhookEventStatus.FAILED,
                 error_message="Processing failed",
             )
-            raise ExternalServiceError(
-                message="Webhook processing failed",
-                code="FI-502-WEBHOOK",
-                details={
-                    "component": "webhook_processor",
-                },
-            ) from e
 
-    def process_webhook(self, webhook: PlaidWebhookRequest, event_id: UUID) -> None:
-        asyncio.get_event_loop().run_until_complete(
-            self.process_webhook_async(webhook, event_id)
-        )
-
-    async def _handle_transactions_webhook_async(
+    def _handle_transactions_webhook_sync(
         self,
         webhook: PlaidWebhookRequest,
         event_id: UUID,
@@ -172,10 +215,7 @@ class WebhookService:
         try:
             code = TransactionsWebhookCode(webhook.webhook_code)
         except ValueError:
-            log.warning(
-                "webhook.transactions.unknown_code",
-                status="skipped",
-            )
+            log.warning("webhook.transactions.unknown_code", status="skipped")
             self._webhook_event_repo.update_status(
                 event_id,
                 WebhookEventStatus.SKIPPED,
@@ -192,20 +232,139 @@ class WebhookService:
 
         if code in sync_codes or code == TransactionsWebhookCode.TRANSACTIONS_REMOVED:
             log.info("webhook.transactions.triggering_sync")
-            await self._trigger_transaction_sync_async(webhook.item_id, event_id, log)
+            self._trigger_transaction_sync(webhook.item_id, event_id, log)
         elif code == TransactionsWebhookCode.RECURRING_TRANSACTIONS_UPDATE:
             log.info("webhook.transactions.triggering_recurring_sync")
             self._trigger_recurring_sync(webhook.item_id, event_id, log)
         else:
-            log.warning(
-                "webhook.transactions.unhandled_code",
-                status="skipped",
-            )
+            log.warning("webhook.transactions.unhandled_code", status="skipped")
             self._webhook_event_repo.update_status(
                 event_id,
                 WebhookEventStatus.SKIPPED,
                 error_message=f"Unhandled transactions webhook code: {code}",
             )
+
+    def _trigger_transaction_sync(
+        self,
+        item_id: str,
+        event_id: UUID,
+        log: Any,
+    ) -> None:
+        try:
+            sync_result = self._transaction_sync_service.sync_item(item_id)
+            log.info(
+                "webhook.transaction_sync.completed",
+                transactions_added=sync_result.added,
+                transactions_modified=sync_result.modified,
+                transactions_removed=sync_result.removed,
+            )
+
+            plaid_item = self._plaid_item_repo.get_by_item_id(item_id)
+            if plaid_item:
+                user_id = UUID(plaid_item["user_id"])
+                plaid_item_id = UUID(plaid_item["id"])
+
+                self._trigger_recurring_sync_silent(plaid_item_id, log)
+                self._run_analytics_sync(user_id, log)
+
+            self._webhook_event_repo.update_status(event_id, WebhookEventStatus.COMPLETED)
+        except Exception:
+            log.exception("webhook.transaction_sync.failed")
+            self._webhook_event_repo.update_status(
+                event_id,
+                WebhookEventStatus.FAILED,
+                error_message="Transaction sync failed",
+            )
+
+    def _trigger_recurring_sync_silent(self, plaid_item_id: UUID, log: Any) -> None:
+        try:
+            self._recurring_sync_service.sync_for_plaid_item(plaid_item_id)
+            log.info("webhook.recurring_sync.completed")
+        except Exception:
+            log.warning("webhook.recurring_sync.failed_silent")
+
+    def _trigger_recurring_sync(self, item_id: str, event_id: UUID, log: Any) -> None:
+        try:
+            plaid_item = self._plaid_item_repo.get_by_item_id(item_id)
+            if not plaid_item:
+                log.error("webhook.recurring_sync.item_not_found", status="failed")
+                self._webhook_event_repo.update_status(
+                    event_id,
+                    WebhookEventStatus.FAILED,
+                    error_message=f"Plaid item not found: {item_id}",
+                )
+                return
+
+            plaid_item_id = UUID(plaid_item["id"])
+            self._recurring_sync_service.sync_for_plaid_item(plaid_item_id)
+            log.info("webhook.recurring_sync.completed")
+            self._webhook_event_repo.update_status(event_id, WebhookEventStatus.COMPLETED)
+        except Exception:
+            log.exception("webhook.recurring_sync.failed")
+            self._webhook_event_repo.update_status(
+                event_id,
+                WebhookEventStatus.FAILED,
+                error_message="Recurring sync failed",
+            )
+
+    def _run_analytics_sync(self, user_id: UUID, log: Any) -> None:
+        try:
+            result = self._spending_computation_manager.compute_for_user(
+                user_id, force_full_recompute=True
+            )
+            log.info(
+                "webhook.analytics.spending_completed",
+                periods_computed=result.periods_computed,
+                transactions_processed=result.transactions_processed,
+            )
+        except Exception:
+            log.warning("webhook.analytics.spending_failed")
+
+        try:
+            stats_result = self._merchant_stats_aggregator.compute_for_user(user_id)
+            log.info(
+                "webhook.analytics.merchant_stats_completed",
+                merchants_computed=stats_result.merchants_computed,
+                transactions_processed=stats_result.transactions_processed,
+            )
+        except Exception:
+            log.warning("webhook.analytics.merchant_stats_failed")
+
+        try:
+            cash_flow_result = self._cash_flow_aggregator.compute_for_user(
+                user_id, force_full_recompute=True
+            )
+            log.info(
+                "webhook.analytics.cash_flow_completed",
+                periods_computed=cash_flow_result.periods_computed,
+                income_sources_detected=cash_flow_result.income_sources_detected,
+            )
+        except Exception:
+            log.warning("webhook.analytics.cash_flow_failed")
+
+        if self._baseline_calculator.should_compute_baselines(user_id):
+            try:
+                baseline_result = self._baseline_calculator.compute_baselines_for_user(
+                    user_id, force_recompute=False
+                )
+                if baseline_result.baselines_computed > 0:
+                    log.info(
+                        "webhook.analytics.target_auto_established",
+                        baselines_computed=baseline_result.baselines_computed,
+                    )
+            except Exception:
+                log.warning("webhook.analytics.baseline_failed")
+
+        baseline_status = self._baseline_calculator.get_baseline_status(user_id)
+        if baseline_status.has_baselines:
+            try:
+                creep_result = self._creep_scorer.compute_current_period(user_id)
+                log.info(
+                    "webhook.analytics.creep_completed",
+                    scores_computed=creep_result.creep_scores_computed,
+                )
+            except Exception:
+                log.warning("webhook.analytics.creep_failed")
 
     def _handle_item_webhook(
         self,
@@ -216,10 +375,7 @@ class WebhookService:
         try:
             code = ItemWebhookCode(webhook.webhook_code)
         except ValueError:
-            log.warning(
-                "webhook.item.unknown_code",
-                status="skipped",
-            )
+            log.warning("webhook.item.unknown_code", status="skipped")
             self._webhook_event_repo.update_status(
                 event_id,
                 WebhookEventStatus.SKIPPED,
@@ -229,10 +385,7 @@ class WebhookService:
 
         plaid_item = self._plaid_item_repo.get_by_item_id(webhook.item_id)
         if not plaid_item:
-            log.error(
-                "webhook.item.not_found",
-                status="failed",
-            )
+            log.error("webhook.item.not_found", status="failed")
             self._webhook_event_repo.update_status(
                 event_id,
                 WebhookEventStatus.FAILED,
@@ -280,112 +433,12 @@ class WebhookService:
             self._webhook_event_repo.update_status(event_id, WebhookEventStatus.COMPLETED)
 
         else:
-            log.warning(
-                "webhook.item.unhandled_code",
-                status="skipped",
-            )
+            log.warning("webhook.item.unhandled_code", status="skipped")
             self._webhook_event_repo.update_status(
                 event_id,
                 WebhookEventStatus.SKIPPED,
                 error_message=f"Unhandled item webhook code: {code}",
             )
-
-    async def _trigger_transaction_sync_async(
-        self,
-        item_id: str,
-        event_id: UUID,
-        log: Any,
-    ) -> None:
-        try:
-            sync_result = self._transaction_sync_service.sync_item(item_id)
-            log.info(
-                "webhook.transaction_sync.completed",
-                transactions_added=sync_result.added,
-                transactions_modified=sync_result.modified,
-                transactions_removed=sync_result.removed,
-            )
-
-            plaid_item = self._plaid_item_repo.get_by_item_id(item_id)
-            if plaid_item:
-                user_id = UUID(plaid_item["user_id"])
-                await self._trigger_analytics_computation_async(user_id, log)
-
-            self._webhook_event_repo.update_status(event_id, WebhookEventStatus.COMPLETED)
-        except Exception:
-            log.exception("webhook.transaction_sync.failed")
-            self._webhook_event_repo.update_status(
-                event_id,
-                WebhookEventStatus.FAILED,
-                error_message="Transaction sync failed",
-            )
-            raise
-
-    def _trigger_recurring_sync(self, item_id: str, event_id: UUID, log: Any) -> None:
-        try:
-            plaid_item = self._plaid_item_repo.get_by_item_id(item_id)
-            if not plaid_item:
-                log.error(
-                    "webhook.recurring_sync.item_not_found",
-                    status="failed",
-                )
-                self._webhook_event_repo.update_status(
-                    event_id,
-                    WebhookEventStatus.FAILED,
-                    error_message=f"Plaid item not found: {item_id}",
-                )
-                return
-
-            plaid_item_id = UUID(plaid_item["id"])
-            self._recurring_sync_service.sync_for_plaid_item(plaid_item_id)
-            log.info("webhook.recurring_sync.completed")
-            self._webhook_event_repo.update_status(event_id, WebhookEventStatus.COMPLETED)
-        except Exception:
-            log.exception("webhook.recurring_sync.failed")
-            self._webhook_event_repo.update_status(
-                event_id,
-                WebhookEventStatus.FAILED,
-                error_message="Recurring sync failed",
-            )
-            raise
-
-    async def _trigger_analytics_computation_async(self, user_id: UUID, log: Any) -> None:
-        analytics_log = log.bind(user_id=str(user_id))
-
-        if self._task_queue_service.is_enabled():
-            try:
-                result = await self._task_queue_service.enqueue_analytics_computation(user_id)
-                analytics_log.info(
-                    "webhook.analytics.enqueued",
-                    job_id=result.job_id,
-                    was_debounced=result.was_debounced,
-                    defer_seconds=result.defer_seconds,
-                )
-                return
-            except Exception:
-                analytics_log.warning("webhook.analytics.enqueue_failed")
-
-        self._run_analytics_sync(user_id, analytics_log)
-
-    def _run_analytics_sync(self, user_id: UUID, log: Any) -> None:
-        try:
-            result = self._spending_computation_manager.compute_current_month(user_id)
-            log.info(
-                "webhook.analytics.spending_completed",
-                periods_computed=result.periods_computed,
-                transactions_processed=result.transactions_processed,
-            )
-        except Exception:
-            log.warning("webhook.analytics.spending_failed")
-
-        try:
-            stats_result = self._merchant_stats_aggregator.compute_for_user(user_id)
-            log.info(
-                "webhook.analytics.merchant_stats_completed",
-                merchants_computed=stats_result.merchants_computed,
-                transactions_processed=stats_result.transactions_processed,
-            )
-        except Exception:
-            log.warning("webhook.analytics.merchant_stats_failed")
 
 
 class WebhookServiceContainer:
@@ -396,7 +449,10 @@ class WebhookServiceContainer:
         if cls._instance is None:
             from repositories.plaid_item import get_plaid_item_repository
             from repositories.webhook_event import get_webhook_event_repository
+            from services.analytics.baseline_calculator import get_baseline_calculator
+            from services.analytics.cash_flow_aggregator import get_cash_flow_aggregator
             from services.analytics.computation_manager import get_spending_computation_manager
+            from services.analytics.creep_scorer import get_creep_scorer
             from services.analytics.merchant_stats_aggregator import get_merchant_stats_aggregator
             from services.recurring import get_recurring_sync_service
             from services.task_queue import get_task_queue_service
@@ -408,6 +464,9 @@ class WebhookServiceContainer:
             recurring_sync_service = get_recurring_sync_service()
             spending_computation_manager = get_spending_computation_manager()
             merchant_stats_aggregator = get_merchant_stats_aggregator()
+            cash_flow_aggregator = get_cash_flow_aggregator()
+            baseline_calculator = get_baseline_calculator()
+            creep_scorer = get_creep_scorer()
             task_queue_service = get_task_queue_service()
             cls._instance = WebhookService(
                 webhook_event_repo,
@@ -416,6 +475,9 @@ class WebhookServiceContainer:
                 recurring_sync_service,
                 spending_computation_manager,
                 merchant_stats_aggregator,
+                cash_flow_aggregator,
+                baseline_calculator,
+                creep_scorer,
                 task_queue_service,
             )
         return cls._instance

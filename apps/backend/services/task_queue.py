@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from arq import create_pool
@@ -29,6 +29,12 @@ class EnqueueResult:
     job_id: str
     was_debounced: bool
     defer_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
+class WebhookEnqueueResult:
+    job_id: str
+    enqueued: bool
 
 
 class TaskQueueService:
@@ -62,7 +68,9 @@ class TaskQueueService:
 
             if status in _CANCELLABLE_STATUSES:
                 await job.abort()
-                logger.debug("task_queue.job_cancelled", job_id=job_id, previous_status=status.value)
+                logger.debug(
+                    "task_queue.job_cancelled", job_id=job_id, previous_status=status.value
+                )
                 return status, True
 
             if status == JobStatus.complete:
@@ -143,6 +151,53 @@ class TaskQueueService:
 
     async def get_analytics_job_status(self, user_id: UUID) -> JobStatus | None:
         job_id = self._get_analytics_job_id(user_id)
+        return await self.get_job_status(job_id)
+
+    async def enqueue_webhook_processing(
+        self,
+        event_id: UUID,
+        webhook_type: str,
+        webhook_code: str,
+        item_id: str,
+        payload: dict[str, Any],
+    ) -> WebhookEnqueueResult:
+        if not self._settings.task_queue_enabled:
+            raise TaskQueueError("Task queue is disabled")
+
+        job_id = f"webhook:{event_id}"
+        log = logger.bind(event_id=str(event_id), job_id=job_id)
+
+        redis = await self._get_redis()
+
+        job = await redis.enqueue_job(
+            "process_plaid_webhook",
+            str(event_id),
+            webhook_type,
+            webhook_code,
+            item_id,
+            payload,
+            _job_id=job_id,
+            _queue_name=self._QUEUE_NAME,
+        )
+
+        enqueued = job is not None
+
+        if enqueued:
+            log.info(
+                "task_queue.webhook.enqueued",
+                webhook_type=webhook_type,
+                webhook_code=webhook_code,
+            )
+        else:
+            log.warning(
+                "task_queue.webhook.enqueue_failed",
+                reason="job_already_exists_or_enqueue_failed",
+            )
+
+        return WebhookEnqueueResult(job_id=job_id, enqueued=enqueued)
+
+    async def get_webhook_job_status(self, event_id: UUID) -> JobStatus | None:
+        job_id = f"webhook:{event_id}"
         return await self.get_job_status(job_id)
 
     def is_enabled(self) -> bool:

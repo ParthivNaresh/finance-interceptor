@@ -117,3 +117,73 @@ class ComputationStatus(str, Enum):
     SUCCESS = "success"
     FAILED = "failed"
     IN_PROGRESS = "in_progress"
+
+
+class CreepSeverity(str, Enum):
+    NONE = "none"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+    @classmethod
+    def from_percentage(cls, percentage: float) -> "CreepSeverity":
+        if percentage < 10.0:
+            return cls.NONE
+        if percentage < 25.0:
+            return cls.LOW
+        if percentage < 50.0:
+            return cls.MEDIUM
+        return cls.HIGH
+
+
+class SpendingCategory(str, Enum):
+    INCOME = "INCOME"
+    TRANSFER_IN = "TRANSFER_IN"
+    TRANSFER_OUT = "TRANSFER_OUT"
+    LOAN_PAYMENTS = "LOAN_PAYMENTS"
+    BANK_FEES = "BANK_FEES"
+    ENTERTAINMENT = "ENTERTAINMENT"
+    FOOD_AND_DRINK = "FOOD_AND_DRINK"
+    GENERAL_MERCHANDISE = "GENERAL_MERCHANDISE"
+    HOME_IMPROVEMENT = "HOME_IMPROVEMENT"
+    MEDICAL = "MEDICAL"
+    PERSONAL_CARE = "PERSONAL_CARE"
+    GENERAL_SERVICES = "GENERAL_SERVICES"
+    GOVERNMENT_AND_NON_PROFIT = "GOVERNMENT_AND_NON_PROFIT"
+    TRANSPORTATION = "TRANSPORTATION"
+    TRAVEL = "TRAVEL"
+    RENT_AND_UTILITIES = "RENT_AND_UTILITIES"
+
+    @classmethod
+    def discretionary_categories(cls) -> frozenset["SpendingCategory"]:
+        return frozenset({
+            cls.ENTERTAINMENT,
+            cls.FOOD_AND_DRINK,
+            cls.GENERAL_MERCHANDISE,
+            cls.PERSONAL_CARE,
+            cls.GENERAL_SERVICES,
+            cls.TRAVEL,
+        })
+
+    @classmethod
+    def non_discretionary_categories(cls) -> frozenset["SpendingCategory"]:
+        return frozenset({
+            cls.INCOME,
+            cls.TRANSFER_IN,
+            cls.TRANSFER_OUT,
+            cls.LOAN_PAYMENTS,
+            cls.BANK_FEES,
+            cls.RENT_AND_UTILITIES,
+            cls.TRANSPORTATION,
+            cls.MEDICAL,
+            cls.HOME_IMPROVEMENT,
+            cls.GOVERNMENT_AND_NON_PROFIT,
+        })
+
+    @classmethod
+    def is_discretionary(cls, category: str) -> bool:
+        try:
+            cat = cls(category)
+            return cat in cls.discretionary_categories()
+        except ValueError:
+            return True

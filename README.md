@@ -10,6 +10,8 @@ A proactive financial monitoring app that detects subscription price increases a
 - 🔐 Secure token storage with encryption
 - 📱 Cross-platform mobile app (iOS/Android)
 - 📈 Pre-computed spending analytics
+- 📉 Lifestyle creep detection with seasonality awareness
+- 🎯 Real-time spending pacing with monthly targets
 - 🔔 Subscription price change detection
 - 📝 Structured logging with PII protection
 - ⚡ Background job processing with Redis + ARQ

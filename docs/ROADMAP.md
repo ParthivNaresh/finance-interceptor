@@ -1,11 +1,11 @@
 # Finance Interceptor - Development Roadmap
 
-## Current Status: Phase 5.2 In Progress
+## Current Status: Phase 5.6.1 Complete
 - ✅ Phase 1 Complete (Auth + Secrets Management)
 - ✅ Phase 2 Complete (Webhooks + Transaction Sync)
 - ✅ Phase 3 Complete (Core Features)
 - ✅ Phase 4 Complete (Recurring Detection Engine)
-- 🔄 Phase 5 In Progress (Analytics Engine)
+- 🔄 Phase 5 In Progress (Analytics Engine - 5.6.1 done)
 
 ---
 
@@ -92,19 +92,40 @@ Pre-computed, rule-based analytics stored in Supabase. Provides structured insig
 - [x] Mobile Insights screen (`app/(tabs)/insights.tsx`)
 - [x] Tab navigation updated with Insights tab
 
-### 5.3 Merchant Intelligence
-- [ ] Transaction frequency per merchant
-- [ ] Average transaction size per merchant
-- [ ] First/last transaction dates
-- [ ] Total lifetime spend per merchant
-- [ ] Merchant categorization cleanup
+### 5.3 Merchant Intelligence ✅
+- [x] Transaction frequency per merchant
+- [x] Average transaction size per merchant
+- [x] First/last transaction dates
+- [x] Total lifetime spend per merchant
+- [x] Merchant categorization cleanup
+- [x] Backend service (`services/analytics/merchant_stats_aggregator.py`)
+- [x] Repository (`repositories/merchant_stats.py`)
+- [x] API endpoints:
+  - GET /api/analytics/merchants/stats - All merchant stats
+  - GET /api/analytics/merchants/stats/top - Top merchants by spend/frequency
+  - GET /api/analytics/merchants/stats/recurring - Recurring merchants
+  - GET /api/analytics/merchants/stats/{name} - Single merchant detail
+  - POST /api/analytics/merchants/stats/compute - Trigger computation
+- [x] Mobile hooks (`hooks/analytics/useMerchants.ts`)
 
-### 5.4 Cash Flow Analysis
-- [ ] Income detection (large recurring inflows)
-- [ ] Monthly net cash flow
-- [ ] Burn rate calculation (days until $0)
-- [ ] Savings rate ((income - expenses) / income)
-- [ ] Projected balance forecasting
+### 5.4 Cash Flow Analysis ✅
+- [x] Income detection (large recurring inflows)
+- [x] Monthly net cash flow
+- [x] Savings rate ((income - expenses) / income)
+- [x] Backend services:
+  - `services/analytics/cash_flow_aggregator.py`
+  - `services/analytics/income_detector.py`
+- [x] Repositories:
+  - `repositories/cash_flow_metrics.py`
+  - `repositories/income_source.py`
+- [x] API endpoints:
+  - GET /api/analytics/cash-flow - Cash flow metrics history
+  - GET /api/analytics/cash-flow/current - Current month cash flow
+  - GET /api/analytics/income-sources - Detected income sources
+  - POST /api/analytics/cash-flow/compute - Trigger computation
+- [x] Mobile hooks (`hooks/analytics/useCashFlow.ts`)
+- [ ] Burn rate calculation (days until $0) - Future enhancement
+- [ ] Projected balance forecasting - Future enhancement
 
 ### 5.5 Anomaly Detection (Rule-Based)
 - [ ] Unusually large transactions (>2σ from merchant mean)
@@ -112,17 +133,56 @@ Pre-computed, rule-based analytics stored in Supabase. Provides structured insig
 - [ ] Category spikes (>50% above rolling average)
 - [ ] Duplicate transaction detection
 
-### 5.6 Lifestyle Creep Scoring
-- [ ] Establish baseline spending (first 3 months per category)
-- [ ] Current vs baseline delta calculation
-- [ ] Creep score per category
-- [ ] Overall lifestyle creep index
+### 5.6 Lifestyle Creep Scoring ✅
+- [x] Establish baseline spending (first 3 months per category)
+- [x] Current vs baseline delta calculation
+- [x] Creep score per category
+- [x] Overall lifestyle creep index
+- [x] Seasonality detection (reduces severity for expected seasonal spending)
+- [x] Backend services (`services/analytics/baseline_calculator.py`, `creep_scorer.py`, `seasonality_detector.py`)
+- [x] Repositories (`repositories/lifestyle_baseline.py`, `lifestyle_creep_score.py`)
+- [x] API endpoints (11 endpoints under `/api/analytics/lifestyle-creep/`)
+  - GET /pacing - Real-time spending pacing status
+  - GET /target-status - Target establishment status (building/established)
+  - GET /baselines - Get user's lifestyle baselines
+  - POST /baselines/compute - Compute baselines from historical data
+  - POST /baselines/lock - Lock baselines to preserve reference point
+  - POST /baselines/unlock - Unlock baselines for recomputation
+  - POST /baselines/reset - Delete and recompute baselines
+  - GET /summary - Get creep summary for a period
+  - GET /history - Get creep summaries for multiple periods
+  - GET /category/{name} - Get creep history for specific category
+  - POST /compute - Compute creep scores for multiple periods
+  - POST /compute/current - Compute creep scores for current period only
+- [x] Mobile types (17 new types in `types/analytics.ts`)
+- [x] Mobile API service (12 new methods in `services/api/analytics.ts`)
+- [x] Mobile hooks (`hooks/analytics/useLifestyleCreep.ts`, `usePacing.ts`, `useTargetStatus.ts`)
+  - useLifestyleBaselines, useLifestyleCreepSummary, useLifestyleCreepHistory
+  - useCategoryCreepHistory, useBaselineComputation, useCreepComputation
+  - usePacing, useTargetStatus
+- [x] Utility functions (getCreepSeverityColor, getCreepSeverityLabel, formatPercentageChange)
+
+### 5.6.1 Real-Time Pacing Mode ✅
+- [x] Pacing API endpoint (`GET /api/analytics/lifestyle-creep/pacing`)
+- [x] Three display modes based on day of month:
+  - **Kickoff** (Days 1-3): "New month!" with target and current spend
+  - **Pacing** (Days 4-7): Progress bar with "today" marker
+  - **Stability** (Days 8+): Full stability score + pacing + top drifting category
+- [x] Pacing status labels:
+  - "Behind" → "Spending slower than usual" (green, positive)
+  - "On Track" → "On pace with your target" (teal, neutral)
+  - "Ahead" → "Spending faster than usual" (warning)
+- [x] Backend `get_pacing_status()` method in `CreepScorer`
+- [x] Mobile `usePacing` hook
+- [x] `SpendingStabilityCard` component with all three modes
+- [x] Minimum 4px progress bar fill for 0% visibility
 
 ### 5.7 Mobile App - Insights Dashboard Enhancements
 - [ ] Spending trend chart (bar chart over time)
-- [ ] Category detail screens
-- [ ] Merchant detail screens
+- [x] Category detail screens (`app/categories/[name].tsx`)
+- [x] Merchant detail screens (`app/merchants/[name].tsx`)
 - [ ] Period selector component
+- [ ] Cash flow dashboard screen
 
 **Deliverable:** Pre-computed financial insights stored in Supabase, accessible via API and displayed in app.
 
@@ -236,7 +296,7 @@ Plaid's Investments product uses a separate API with a different schema. Would r
 | Phase 2 - Data Sync | ✅ Complete |
 | Phase 3 - Core Features | ✅ Complete |
 | Phase 4 - Recurring Detection | ✅ Complete |
-| Phase 5 - Analytics Engine | 🔄 In Progress (5.2 done) |
+| Phase 5 - Analytics Engine | 🔄 In Progress (5.6 done) |
 | Phase 6 - Push Notifications | Not Started |
 | Phase 7 - Agentic | Not Started |
 | Phase 8 - Production | Not Started |

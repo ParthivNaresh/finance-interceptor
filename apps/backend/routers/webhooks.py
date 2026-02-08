@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import ValidationError
+from starlette.responses import JSONResponse
 
 from config import Settings, get_settings
 from errors import WebhookVerificationError
@@ -31,7 +32,7 @@ async def receive_plaid_webhook(
     webhook_verifier: WebhookVerifierDep,
     settings: SettingsDep,
     plaid_verification: str | None = Header(default=None, alias="Plaid-Verification"),
-) -> WebhookAcknowledgeResponse:
+) -> JSONResponse:
     raw_body = await request.body()
 
     if settings.plaid_webhook_verification_enabled:
@@ -41,34 +42,47 @@ async def receive_plaid_webhook(
 
     idempotency_key = webhook_service.generate_idempotency_key(webhook)
     if webhook_service.is_duplicate(idempotency_key):
-        return WebhookAcknowledgeResponse(
-            received=True,
-            event_id=None,
-            status="duplicate",
+        return JSONResponse(
+            content=WebhookAcknowledgeResponse(
+                received=True,
+                event_id=None,
+                status="duplicate",
+            ).model_dump(mode="json"),
+            status_code=200,
         )
 
     payload = webhook.model_dump()
     event_id = webhook_service.store_event(webhook, payload)
 
-    try:
-        await webhook_service.process_webhook_async(webhook, event_id)
-    except Exception:
-        logger.exception(
-            "webhook.processing_error",
-            event_id=str(event_id),
-            webhook_type=webhook.webhook_type,
-            webhook_code=webhook.webhook_code,
-        )
-        return WebhookAcknowledgeResponse(
-            received=True,
-            event_id=event_id,
-            status="error",
+    enqueued = await webhook_service.enqueue_processing(webhook, event_id, payload)
+
+    if enqueued:
+        return JSONResponse(
+            content=WebhookAcknowledgeResponse(
+                received=True,
+                event_id=event_id,
+                status="queued",
+            ).model_dump(mode="json"),
+            status_code=200,
         )
 
-    return WebhookAcknowledgeResponse(
-        received=True,
-        event_id=event_id,
-        status="processed",
+    logger.warning(
+        "webhook.fallback_to_background_task",
+        event_id=str(event_id),
+        webhook_type=webhook.webhook_type,
+        webhook_code=webhook.webhook_code,
+    )
+
+    background_task = webhook_service.create_fallback_background_task(webhook, event_id)
+
+    return JSONResponse(
+        content=WebhookAcknowledgeResponse(
+            received=True,
+            event_id=event_id,
+            status="accepted",
+        ).model_dump(mode="json"),
+        status_code=200,
+        background=background_task,
     )
 
 

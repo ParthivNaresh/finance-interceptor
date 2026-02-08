@@ -10,6 +10,16 @@ from repositories.category_spending import (
     CategorySpendingRepositoryContainer,
     get_category_spending_repository,
 )
+from repositories.lifestyle_baseline import (
+    LifestyleBaselineRepository,
+    LifestyleBaselineRepositoryContainer,
+    get_lifestyle_baseline_repository,
+)
+from repositories.lifestyle_creep_score import (
+    LifestyleCreepScoreRepository,
+    LifestyleCreepScoreRepositoryContainer,
+    get_lifestyle_creep_score_repository,
+)
 from repositories.merchant_spending import (
     MerchantSpendingRepository,
     MerchantSpendingRepositoryContainer,
@@ -51,6 +61,10 @@ __all__ = [
     "AnalyticsComputationLogRepositoryContainer",
     "CategorySpendingRepository",
     "CategorySpendingRepositoryContainer",
+    "LifestyleBaselineRepository",
+    "LifestyleBaselineRepositoryContainer",
+    "LifestyleCreepScoreRepository",
+    "LifestyleCreepScoreRepositoryContainer",
     "MerchantSpendingRepository",
     "MerchantSpendingRepositoryContainer",
     "MerchantStatsRepository",
@@ -69,6 +83,8 @@ __all__ = [
     "get_alert_repository",
     "get_analytics_computation_log_repository",
     "get_category_spending_repository",
+    "get_lifestyle_baseline_repository",
+    "get_lifestyle_creep_score_repository",
     "get_merchant_spending_repository",
     "get_merchant_stats_repository",
     "get_plaid_item_repository",

@@ -1,10 +1,11 @@
 from datetime import date, datetime
 from decimal import Decimal
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from models.enums import ComputationStatus, PeriodType
+from models.enums import BaselineType, ComputationStatus, CreepSeverity, PeriodType
 
 
 class SpendingPeriodBase(BaseModel):
@@ -438,3 +439,177 @@ class CashFlowComputationResultResponse(BaseModel):
     transactions_processed: int
     computation_time_ms: int
     error_message: str | None = None
+
+
+class LifestyleBaselineBase(BaseModel):
+    category_primary: str
+    baseline_type: BaselineType = BaselineType.ROLLING_3MO
+    baseline_monthly_amount: Decimal
+    baseline_transaction_count: int
+    baseline_period_start: date
+    baseline_period_end: date
+    baseline_months_count: int
+    seasonal_adjustment_factor: Decimal | None = None
+    is_locked: bool = False
+
+
+class LifestyleBaselineCreate(LifestyleBaselineBase):
+    user_id: UUID
+
+
+class LifestyleBaselineUpdate(BaseModel):
+    baseline_monthly_amount: Decimal | None = None
+    baseline_transaction_count: int | None = None
+    baseline_period_start: date | None = None
+    baseline_period_end: date | None = None
+    baseline_months_count: int | None = None
+    seasonal_adjustment_factor: Decimal | None = None
+    is_locked: bool | None = None
+
+
+class LifestyleBaselineResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    user_id: UUID
+    category_primary: str
+    baseline_type: BaselineType
+    baseline_monthly_amount: Decimal
+    baseline_transaction_count: int
+    baseline_period_start: date
+    baseline_period_end: date
+    baseline_months_count: int
+    seasonal_adjustment_factor: Decimal | None
+    is_locked: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class LifestyleBaselineSummary(BaseModel):
+    category_primary: str
+    baseline_monthly_amount: Decimal
+    baseline_months_count: int
+    is_locked: bool
+
+
+class LifestyleBaselineListResponse(BaseModel):
+    baselines: list[LifestyleBaselineResponse]
+    total: int
+    baseline_period_start: date | None = None
+    baseline_period_end: date | None = None
+
+
+class LifestyleCreepScoreBase(BaseModel):
+    period_start: date
+    category_primary: str
+    baseline_amount: Decimal
+    current_amount: Decimal
+    absolute_change: Decimal
+    percentage_change: Decimal
+    creep_score: Decimal
+    is_inflation_adjusted: bool = False
+    inflation_rate_used: Decimal | None = None
+
+
+class LifestyleCreepScoreCreate(LifestyleCreepScoreBase):
+    user_id: UUID
+
+
+class LifestyleCreepScoreResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    user_id: UUID
+    period_start: date
+    category_primary: str
+    baseline_amount: Decimal
+    current_amount: Decimal
+    absolute_change: Decimal
+    percentage_change: Decimal
+    creep_score: Decimal
+    is_inflation_adjusted: bool
+    inflation_rate_used: Decimal | None
+    created_at: datetime
+
+
+class CategoryCreepSummary(BaseModel):
+    category_primary: str
+    baseline_amount: Decimal
+    current_amount: Decimal
+    absolute_change: Decimal
+    percentage_change: Decimal
+    severity: CreepSeverity
+    is_seasonal: bool = False
+    seasonal_months: list[int] | None = None
+
+
+class LifestyleCreepSummary(BaseModel):
+    period_start: date
+    total_baseline_discretionary: Decimal
+    total_current_discretionary: Decimal
+    overall_creep_percentage: Decimal
+    overall_severity: CreepSeverity
+    discretionary_ratio: Decimal | None = None
+    income_for_period: Decimal | None = None
+    top_creeping_categories: list[CategoryCreepSummary] = Field(default_factory=list)
+    improving_categories: list[CategoryCreepSummary] = Field(default_factory=list)
+
+
+class LifestyleCreepListResponse(BaseModel):
+    periods: list[LifestyleCreepSummary]
+    total_periods: int
+    average_creep_percentage: Decimal | None = None
+
+
+class LifestyleCreepComputationResult(BaseModel):
+    status: ComputationStatus
+    baselines_computed: int
+    creep_scores_computed: int
+    categories_analyzed: int
+    computation_time_ms: int
+    error_message: str | None = None
+
+
+class TargetStatusType(str, Enum):
+    BUILDING = "building"
+    ESTABLISHED = "established"
+
+
+class TargetStatusResponse(BaseModel):
+    status: TargetStatusType
+    months_available: int
+    months_required: int
+    established_at: date | None = None
+    target_period_start: date | None = None
+    target_period_end: date | None = None
+    categories_count: int = 0
+    next_review_at: date | None = None
+
+
+class PacingStatus(str, Enum):
+    ON_TRACK = "on_track"
+    AHEAD = "ahead"
+    BEHIND = "behind"
+
+
+class PacingMode(str, Enum):
+    KICKOFF = "kickoff"
+    PACING = "pacing"
+    STABILITY = "stability"
+
+
+class PacingResponse(BaseModel):
+    mode: PacingMode
+    period_start: date
+    period_end: date
+    days_into_period: int
+    total_days_in_period: int
+    target_amount: Decimal
+    current_discretionary_spend: Decimal
+    pacing_percentage: Decimal
+    expected_pacing_percentage: Decimal
+    pacing_status: PacingStatus
+    pacing_difference: Decimal
+    stability_score: int | None = None
+    overall_severity: CreepSeverity | None = None
+    top_drifting_category: CategoryCreepSummary | None = None

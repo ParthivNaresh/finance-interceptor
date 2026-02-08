@@ -7,7 +7,7 @@ from arq.connections import RedisSettings
 from config import get_settings
 from workers.lifecycle import shutdown, startup
 from workers.retry import exponential_backoff
-from workers.tasks import compute_analytics_for_user
+from workers.tasks import compute_analytics_for_user, process_plaid_webhook
 
 
 def get_redis_settings() -> RedisSettings:
@@ -16,7 +16,10 @@ def get_redis_settings() -> RedisSettings:
 
 
 class WorkerSettings:
-    functions: ClassVar[list[Callable[..., Any]]] = [compute_analytics_for_user]
+    functions: ClassVar[list[Callable[..., Any]]] = [
+        compute_analytics_for_user,
+        process_plaid_webhook,
+    ]
 
     on_startup = startup
     on_shutdown = shutdown

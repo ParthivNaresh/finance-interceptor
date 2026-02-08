@@ -13,35 +13,47 @@ from models.analytics import (
     CashFlowMetricsListResponse,
     CashFlowMetricsResponse,
     CategoryBreakdownResponse,
+    CategoryCreepSummary,
     CategoryDetailResponse,
     CategorySpendingHistoryItem,
     CategorySpendingSummary,
     ComputationResultResponse,
     IncomeSourceListResponse,
     IncomeSourceResponse,
+    LifestyleBaselineListResponse,
+    LifestyleBaselineResponse,
+    LifestyleCreepComputationResult,
+    LifestyleCreepListResponse,
+    LifestyleCreepSummary,
     MerchantBreakdownResponse,
     MerchantSpendingHistoryItem,
     MerchantSpendingSummary,
     MerchantStatsComputationResult,
     MerchantStatsListResponse,
     MerchantStatsResponse,
+    PacingResponse,
     SpendingPeriodWithDelta,
     SpendingSummaryListResponse,
     SpendingSummaryResponse,
     SubcategorySpendingSummary,
+    TargetStatusResponse,
+    TargetStatusType,
 )
 from models.auth import AuthenticatedUser
-from models.enums import PeriodType
+from models.enums import BaselineType, PeriodType
 from repositories.cash_flow_metrics import CashFlowMetricsRepository, get_cash_flow_metrics_repository
 from repositories.category_spending import CategorySpendingRepository, get_category_spending_repository
 from repositories.income_source import IncomeSourceRepository, get_income_source_repository
+from repositories.lifestyle_baseline import LifestyleBaselineRepository, get_lifestyle_baseline_repository
 from repositories.merchant_spending import MerchantSpendingRepository, get_merchant_spending_repository
 from repositories.merchant_stats import MerchantStatsRepository, get_merchant_stats_repository
 from repositories.spending_period import SpendingPeriodRepository, get_spending_period_repository
 from repositories.transaction import TransactionRepository, get_transaction_repository
 from services.analytics import get_spending_computation_manager
+from services.analytics.baseline_calculator import BaselineCalculator, get_baseline_calculator
 from services.analytics.cash_flow_aggregator import CashFlowAggregator, get_cash_flow_aggregator
 from services.analytics.computation_manager import SpendingComputationManager
+from services.analytics.creep_scorer import CreepScorer, get_creep_scorer
 from services.analytics.merchant_stats_aggregator import MerchantStatsAggregator, get_merchant_stats_aggregator
 from services.analytics.period_calculator import (
     get_current_period_start,
@@ -64,6 +76,9 @@ MerchantStatsAggregatorDep = Annotated[MerchantStatsAggregator, Depends(get_merc
 CashFlowRepoDep = Annotated[CashFlowMetricsRepository, Depends(get_cash_flow_metrics_repository)]
 IncomeSourceRepoDep = Annotated[IncomeSourceRepository, Depends(get_income_source_repository)]
 CashFlowAggregatorDep = Annotated[CashFlowAggregator, Depends(get_cash_flow_aggregator)]
+BaselineCalculatorDep = Annotated[BaselineCalculator, Depends(get_baseline_calculator)]
+CreepScorerDep = Annotated[CreepScorer, Depends(get_creep_scorer)]
+LifestyleBaselineRepoDep = Annotated[LifestyleBaselineRepository, Depends(get_lifestyle_baseline_repository)]
 
 
 @router.get(
@@ -1087,3 +1102,307 @@ def _parse_date(value: str | date) -> date:
     if isinstance(value, date):
         return value
     return date.fromisoformat(value)
+
+
+MONTHS_REQUIRED_FOR_TARGET = 3
+
+
+@router.get(
+    "/lifestyle-creep/pacing",
+    response_model=PacingResponse,
+    summary="Get current spending pacing",
+    description="Returns real-time pacing status comparing current discretionary spend to target",
+)
+async def get_pacing_status(
+    current_user: CurrentUserDep,
+    creep_scorer: CreepScorerDep,
+) -> PacingResponse:
+    pacing = creep_scorer.get_pacing_status(current_user.id)
+
+    if not pacing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No spending target established. Need at least 3 months of data.",
+        )
+
+    return pacing
+
+
+@router.get(
+    "/lifestyle-creep/target-status",
+    response_model=TargetStatusResponse,
+    summary="Get spending target status",
+    description="Returns the status of the user's spending target (building or established)",
+)
+async def get_target_status(
+    current_user: CurrentUserDep,
+    baseline_calculator: BaselineCalculatorDep,
+    spending_period_repo: SpendingPeriodRepoDep,
+) -> TargetStatusResponse:
+    baseline_status = baseline_calculator.get_baseline_status(current_user.id)
+
+    if baseline_status.has_baselines:
+        next_review = None
+        if baseline_status.baseline_period_end:
+            next_review = baseline_status.baseline_period_end + timedelta(days=365)
+
+        return TargetStatusResponse(
+            status=TargetStatusType.ESTABLISHED,
+            months_available=baseline_status.months_count,
+            months_required=MONTHS_REQUIRED_FOR_TARGET,
+            established_at=baseline_status.baseline_period_end,
+            target_period_start=baseline_status.baseline_period_start,
+            target_period_end=baseline_status.baseline_period_end,
+            categories_count=baseline_status.categories_count,
+            next_review_at=next_review,
+        )
+
+    periods = spending_period_repo.get_periods_for_user(
+        user_id=current_user.id,
+        period_type=PeriodType.MONTHLY,
+        limit=MONTHS_REQUIRED_FOR_TARGET,
+    )
+    months_available = len(periods)
+
+    return TargetStatusResponse(
+        status=TargetStatusType.BUILDING,
+        months_available=months_available,
+        months_required=MONTHS_REQUIRED_FOR_TARGET,
+        established_at=None,
+        target_period_start=None,
+        target_period_end=None,
+        categories_count=0,
+        next_review_at=None,
+    )
+
+
+@router.get(
+    "/lifestyle-creep/baselines",
+    response_model=LifestyleBaselineListResponse,
+    summary="Get lifestyle baselines",
+    description="Returns the user's lifestyle spending baselines by category",
+)
+async def get_lifestyle_baselines(
+    current_user: CurrentUserDep,
+    baseline_repo: LifestyleBaselineRepoDep,
+) -> LifestyleBaselineListResponse:
+    baselines = baseline_repo.get_by_user_id(current_user.id)
+
+    if not baselines:
+        return LifestyleBaselineListResponse(
+            baselines=[],
+            total=0,
+            is_locked=False,
+        )
+
+    is_locked = any(b.get("is_locked", False) for b in baselines)
+
+    return LifestyleBaselineListResponse(
+        baselines=[_to_baseline_response(b) for b in baselines],
+        total=len(baselines),
+        is_locked=is_locked,
+    )
+
+
+@router.post(
+    "/lifestyle-creep/baselines/compute",
+    response_model=LifestyleCreepComputationResult,
+    summary="Compute lifestyle baselines",
+    description="Computes lifestyle spending baselines from historical data",
+)
+@limiter.limit(limits.analytics_write)
+async def compute_lifestyle_baselines(
+    request: Request,
+    current_user: CurrentUserDep,
+    baseline_calculator: BaselineCalculatorDep,
+    force_recompute: bool = Query(default=False, description="Force recomputation even if baselines exist"),
+) -> LifestyleCreepComputationResult:
+    result = baseline_calculator.compute_baselines_for_user(
+        user_id=current_user.id,
+        force_recompute=force_recompute,
+    )
+
+    return LifestyleCreepComputationResult(
+        status=result.status,
+        baselines_computed=result.baselines_computed,
+        creep_scores_computed=0,
+        categories_analyzed=result.categories_analyzed,
+        computation_time_ms=result.computation_time_ms,
+        error_message=result.error_message,
+    )
+
+
+@router.post(
+    "/lifestyle-creep/baselines/lock",
+    response_model=dict,
+    summary="Lock lifestyle baselines",
+    description="Locks baselines to preserve the reference point",
+)
+@limiter.limit(limits.analytics_write)
+async def lock_lifestyle_baselines(
+    request: Request,
+    current_user: CurrentUserDep,
+    baseline_calculator: BaselineCalculatorDep,
+) -> dict:
+    locked_count = baseline_calculator.lock_baselines(current_user.id)
+    return {"locked_count": locked_count, "message": f"Locked {locked_count} baselines"}
+
+
+@router.post(
+    "/lifestyle-creep/baselines/unlock",
+    response_model=dict,
+    summary="Unlock lifestyle baselines",
+    description="Unlocks baselines to allow recomputation",
+)
+@limiter.limit(limits.analytics_write)
+async def unlock_lifestyle_baselines(
+    request: Request,
+    current_user: CurrentUserDep,
+    baseline_calculator: BaselineCalculatorDep,
+) -> dict:
+    unlocked_count = baseline_calculator.unlock_baselines(current_user.id)
+    return {"unlocked_count": unlocked_count, "message": f"Unlocked {unlocked_count} baselines"}
+
+
+@router.post(
+    "/lifestyle-creep/baselines/reset",
+    response_model=LifestyleCreepComputationResult,
+    summary="Reset lifestyle baselines",
+    description="Deletes existing baselines and recomputes from scratch",
+)
+@limiter.limit(limits.analytics_write)
+async def reset_lifestyle_baselines(
+    request: Request,
+    current_user: CurrentUserDep,
+    baseline_calculator: BaselineCalculatorDep,
+) -> LifestyleCreepComputationResult:
+    result = baseline_calculator.reset_baselines(current_user.id)
+
+    return LifestyleCreepComputationResult(
+        status=result.status,
+        baselines_computed=result.baselines_computed,
+        creep_scores_computed=0,
+        categories_analyzed=result.categories_analyzed,
+        computation_time_ms=result.computation_time_ms,
+        error_message=result.error_message,
+    )
+
+
+@router.get(
+    "/lifestyle-creep/summary",
+    response_model=LifestyleCreepSummary,
+    summary="Get lifestyle creep summary",
+    description="Returns lifestyle creep summary for a specific period",
+)
+async def get_lifestyle_creep_summary(
+    current_user: CurrentUserDep,
+    creep_scorer: CreepScorerDep,
+    period_start: date | None = Query(default=None, description="Period start date (defaults to current month)"),
+) -> LifestyleCreepSummary:
+    if period_start is None:
+        period_start = get_current_period_start(PeriodType.MONTHLY)
+
+    summary = creep_scorer.get_creep_summary(current_user.id, period_start)
+
+    if not summary:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lifestyle creep data not found for this period. Run computation first.",
+        )
+
+    return summary
+
+
+@router.get(
+    "/lifestyle-creep/history",
+    response_model=LifestyleCreepListResponse,
+    summary="Get lifestyle creep history",
+    description="Returns lifestyle creep summaries for multiple periods",
+)
+async def get_lifestyle_creep_history(
+    current_user: CurrentUserDep,
+    creep_scorer: CreepScorerDep,
+    periods: int = Query(default=12, ge=1, le=24, description="Number of periods to return"),
+) -> LifestyleCreepListResponse:
+    summaries = creep_scorer.get_creep_history(current_user.id, periods)
+
+    return LifestyleCreepListResponse(
+        periods=summaries,
+        total=len(summaries),
+    )
+
+
+@router.get(
+    "/lifestyle-creep/category/{category_name}",
+    response_model=list[CategoryCreepSummary],
+    summary="Get category creep history",
+    description="Returns lifestyle creep history for a specific category",
+)
+async def get_category_creep_history(
+    category_name: str,
+    current_user: CurrentUserDep,
+    creep_scorer: CreepScorerDep,
+    periods: int = Query(default=12, ge=1, le=24, description="Number of periods to return"),
+) -> list[CategoryCreepSummary]:
+    return creep_scorer.get_category_creep_history(
+        user_id=current_user.id,
+        category_primary=category_name,
+        periods=periods,
+    )
+
+
+@router.post(
+    "/lifestyle-creep/compute",
+    response_model=LifestyleCreepComputationResult,
+    summary="Compute lifestyle creep scores",
+    description="Computes lifestyle creep scores by comparing current spending to baselines",
+)
+@limiter.limit(limits.analytics_write)
+async def compute_lifestyle_creep(
+    request: Request,
+    current_user: CurrentUserDep,
+    creep_scorer: CreepScorerDep,
+    periods: int = Query(default=6, ge=1, le=12, description="Number of periods to compute"),
+    force_recompute: bool = Query(default=False, description="Force recomputation of existing scores"),
+) -> LifestyleCreepComputationResult:
+    return creep_scorer.compute_creep_for_user(
+        user_id=current_user.id,
+        periods_to_compute=periods,
+        force_recompute=force_recompute,
+    )
+
+
+@router.post(
+    "/lifestyle-creep/compute/current",
+    response_model=LifestyleCreepComputationResult,
+    summary="Compute current period lifestyle creep",
+    description="Computes lifestyle creep scores for the current period only",
+)
+@limiter.limit(limits.analytics_write)
+async def compute_current_lifestyle_creep(
+    request: Request,
+    current_user: CurrentUserDep,
+    creep_scorer: CreepScorerDep,
+) -> LifestyleCreepComputationResult:
+    return creep_scorer.compute_current_period(current_user.id)
+
+
+def _to_baseline_response(baseline: dict) -> LifestyleBaselineResponse:
+    return LifestyleBaselineResponse(
+        id=UUID(baseline["id"]),
+        user_id=UUID(baseline["user_id"]),
+        category_primary=baseline["category_primary"],
+        baseline_type=BaselineType(baseline["baseline_type"]),
+        baseline_monthly_amount=Decimal(str(baseline["baseline_monthly_amount"])),
+        baseline_transaction_count=baseline["baseline_transaction_count"],
+        baseline_period_start=_parse_date(baseline["baseline_period_start"]),
+        baseline_period_end=_parse_date(baseline["baseline_period_end"]),
+        baseline_months_count=baseline["baseline_months_count"],
+        seasonal_adjustment_factor=(
+            Decimal(str(baseline["seasonal_adjustment_factor"]))
+            if baseline.get("seasonal_adjustment_factor") else None
+        ),
+        is_locked=baseline.get("is_locked", False),
+        created_at=baseline["created_at"],
+        updated_at=baseline["updated_at"],
+    )

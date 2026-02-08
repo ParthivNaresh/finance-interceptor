@@ -48,8 +48,12 @@ mobile-prebuild-android:
 # BACKEND
 # ============================================================================
 
-# Start backend server
-backend-start:
+# Kill any existing backend process on port 8000
+backend-kill:
+    -lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+
+# Start backend server (kills existing process first)
+backend-start: backend-kill
     cd apps/backend && source .venv/bin/activate && \
     export SSL_CERT_FILE=$(.venv/bin/python -c "import certifi; print(certifi.where())") && \
     export REQUESTS_CA_BUNDLE=$SSL_CERT_FILE && \

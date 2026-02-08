@@ -71,7 +71,9 @@ apps/backend/
 │   ├── spending_period.py
 │   ├── category_spending.py
 │   ├── merchant_spending.py
-│   └── analytics_log.py
+│   ├── analytics_log.py
+│   ├── lifestyle_baseline.py    # Lifestyle baselines CRUD
+│   └── lifestyle_creep_score.py # Creep scores CRUD
 ├── services/            # Business logic
 │   ├── plaid.py         # Plaid API wrapper
 │   ├── database.py      # Supabase client
@@ -84,7 +86,13 @@ apps/backend/
 │       ├── period_calculator.py
 │       ├── transfer_detector.py
 │       ├── spending_aggregator.py
-│       └── computation_manager.py
+│       ├── computation_manager.py
+│       ├── merchant_stats_aggregator.py  # Merchant lifetime stats
+│       ├── cash_flow_aggregator.py       # Cash flow metrics
+│       ├── income_detector.py            # Income source detection
+│       ├── baseline_calculator.py        # Lifestyle baseline computation
+│       ├── creep_scorer.py               # Lifestyle creep scoring
+│       └── seasonality_detector.py       # Seasonal spending detection
 ├── routers/             # API endpoints
 │   ├── health.py
 │   ├── plaid.py
@@ -168,19 +176,46 @@ http://localhost:8000/docs
 
 ## Background Worker (ARQ)
 
-Analytics computation runs asynchronously via a Redis-backed job queue.
+Webhook processing and analytics computation run asynchronously via a Redis-backed job queue.
 
 ### Architecture
 ```
-Webhook → FastAPI → Redis Queue → ARQ Worker → Analytics Computation
-                         ↓
-                   30s debounce
+Plaid Webhook → FastAPI → Store Event → Return 200 → Redis Queue → ARQ Worker
+                                                           ↓
+                                              ┌────────────┴────────────┐
+                                              │                         │
+                                    Webhook Processing          Analytics Computation
+                                    (transaction sync,          (30s debounce)
+                                     recurring sync)
 ```
 
+### Key Design: Fast Webhook Acknowledgment
+Plaid webhooks have a ~5 second timeout. The webhook endpoint:
+1. Validates the webhook payload
+2. Stores the event in DB
+3. **Returns HTTP 200 immediately** (typically <50ms)
+4. Enqueues processing to the ARQ worker
+
+This prevents `ClientDisconnect()` errors from Plaid timing out.
+
+### Worker Tasks
+
+**`process_plaid_webhook`** (`workers/tasks/webhook.py`):
+- Transaction sync (calls Plaid API)
+- Recurring stream sync
+- Enqueues analytics computation
+
+**`compute_analytics_for_user`** (`workers/tasks/analytics.py`):
+- Spending periods (monthly rollups)
+- Merchant stats (lifetime spending per merchant)
+- Cash flow metrics (income, expenses, savings rate)
+- Lifestyle baselines and creep scores
+
 ### Key Features
-- **Debouncing**: Multiple webhooks for same user within 30s trigger only one computation
+- **Fast acknowledgment**: Webhooks return <50ms, processing happens async
+- **Debouncing**: Multiple webhooks for same user within 30s trigger only one analytics computation
 - **Retry with backoff**: Failed jobs retry with exponential backoff (10s, 20s, 40s...)
-- **Graceful fallback**: If Redis unavailable, runs synchronously
+- **Graceful fallback**: If Redis unavailable, uses FastAPI BackgroundTasks
 
 ### Running Worker
 ```bash
@@ -195,11 +230,23 @@ just worker-start
 ```python
 from services.task_queue import get_task_queue_service
 
-# Enqueue analytics computation with debouncing
 task_queue = get_task_queue_service()
+
+# Enqueue webhook processing (immediate)
+result = await task_queue.enqueue_webhook_processing(
+    event_id, webhook_type, webhook_code, item_id, payload
+)
+
+# Enqueue analytics computation (with debouncing)
 result = await task_queue.enqueue_analytics_computation(user_id)
 # result.was_debounced = True if existing job was cancelled
 ```
+
+### Worker Contexts
+- `WorkerContext` - Analytics services (spending, merchant, cash flow, etc.)
+- `WebhookWorkerContext` - Webhook processing services (transaction sync, recurring sync, etc.)
+
+Both are initialized in `workers/lifecycle.py` and passed to tasks via the ARQ context.
 
 ### Configuration
 ```env
@@ -208,7 +255,7 @@ TASK_QUEUE_ENABLED=true
 TASK_DEBOUNCE_SECONDS=30
 ```
 
-Set `TASK_QUEUE_ENABLED=false` to disable background processing (analytics runs synchronously).
+Set `TASK_QUEUE_ENABLED=false` to disable background processing. Webhooks will use FastAPI BackgroundTasks as fallback.
 
 ---
 
@@ -377,8 +424,16 @@ apps/mobile/
 │   ├── useTransactions.ts
 │   ├── useRecurring.ts
 │   ├── useAlerts.ts
-│   ├── useAnalytics.ts
-│   └── usePlaidLink.ts
+│   ├── usePlaidLink.ts
+│   └── analytics/       # Analytics hooks package
+│       ├── useSpending.ts
+│       ├── useCategories.ts
+│       ├── useMerchants.ts
+│       ├── useCashFlow.ts
+│       ├── useComputation.ts
+│       ├── useLifestyleCreep.ts  # Lifestyle creep hooks
+│       ├── types.ts
+│       └── utils.ts
 ├── services/
 │   ├── api/             # API client and endpoints
 │   │   ├── client.ts    # Base API client
@@ -574,11 +629,155 @@ Analytics Engine - pre-computed spending insights.
 - Backend services for spending aggregation
 - API endpoints for spending data
 - Mobile Insights screen with basic UI
+- Lifestyle creep scoring (Phase 5.6)
+  - Baseline calculator (first 3 months per category)
+  - Creep scorer (compares current vs baseline)
+  - Seasonality detector (reduces severity for expected seasonal spending)
+  - 12 API endpoints under `/api/analytics/lifestyle-creep/`
+  - Mobile hooks and types for lifestyle creep
+- Real-time pacing mode (Phase 5.6.1)
+  - Three display modes: Kickoff (days 1-3), Pacing (days 4-7), Stability (days 8+)
+  - Progress bar with "today" marker showing expected vs actual spending
+  - `usePacing` hook and `SpendingStabilityCard` component
 
 **Next:**
 - Spending trend chart component
-- Merchant intelligence
-- Cash flow analysis
 - Anomaly detection
+- Cash flow dashboard screen
+- Period selector component
 
 See `docs/ROADMAP.md` for full task list.
+
+---
+
+## Lifestyle Creep System
+
+Detects gradual spending increases by comparing current spending to historical baselines.
+
+### Key Concepts
+
+**Baselines:** Average monthly spending per discretionary category from the user's first 3 months of data.
+
+**Discretionary Categories:** ENTERTAINMENT, FOOD_AND_DRINK, GENERAL_MERCHANDISE, PERSONAL_CARE, GENERAL_SERVICES, TRAVEL
+
+**Severity Levels:**
+| Percentage Change | Severity |
+|-------------------|----------|
+| < 10% | none |
+| 10-25% | low |
+| 25-50% | medium |
+| > 50% | high |
+
+**Seasonality:** Certain categories have expected high-spend months (e.g., TRAVEL in summer/December). Severity is reduced by one level during seasonal periods.
+
+### API Endpoints
+
+```
+GET  /api/analytics/lifestyle-creep/baselines
+POST /api/analytics/lifestyle-creep/baselines/compute
+POST /api/analytics/lifestyle-creep/baselines/lock
+POST /api/analytics/lifestyle-creep/baselines/unlock
+POST /api/analytics/lifestyle-creep/baselines/reset
+GET  /api/analytics/lifestyle-creep/summary
+GET  /api/analytics/lifestyle-creep/history
+GET  /api/analytics/lifestyle-creep/category/{name}
+POST /api/analytics/lifestyle-creep/compute
+POST /api/analytics/lifestyle-creep/compute/current
+```
+
+### Mobile Hooks
+
+```typescript
+import {
+  useLifestyleBaselines,
+  useLifestyleCreepSummary,
+  useLifestyleCreepHistory,
+  useCategoryCreepHistory,
+  useBaselineComputation,
+  useCreepComputation,
+} from '@/hooks/analytics';
+```
+
+### Typical Usage Flow
+
+1. User has 2-3 months of transaction data
+2. Call `POST /baselines/compute` to establish baselines
+3. Optionally lock baselines with `POST /baselines/lock`
+4. Call `POST /compute` to calculate creep scores
+5. Display results via `GET /summary` or `GET /history`
+
+---
+
+## Real-Time Pacing System
+
+Shows users their spending progress throughout the month compared to their established target.
+
+### Pacing Modes
+
+The UI displays different content based on the day of the month:
+
+| Days | Mode | Display |
+|------|------|---------|
+| 1-3 | **Kickoff** | "New month!" with target amount and current spend |
+| 4-7 | **Pacing** | Progress bar with "today" marker, pacing status |
+| 8+ | **Stability** | Full stability score + pacing bar + top drifting category |
+
+### Pacing Status
+
+| Status | Meaning | Color |
+|--------|---------|-------|
+| `behind` | Spending slower than usual | Green (positive) |
+| `on_track` | On pace with target | Teal (neutral) |
+| `ahead` | Spending faster than usual | Warning (caution) |
+
+### API Endpoint
+
+```
+GET /api/analytics/lifestyle-creep/pacing
+```
+
+**Response:**
+```json
+{
+  "mode": "stability",
+  "period_start": "2026-02-01",
+  "period_end": "2026-02-28",
+  "days_into_period": 8,
+  "total_days_in_period": 28,
+  "target_amount": "3184.23",
+  "current_discretionary_spend": "500.00",
+  "pacing_percentage": "15.70",
+  "expected_pacing_percentage": "28.57",
+  "pacing_status": "behind",
+  "pacing_difference": "-12.87",
+  "stability_score": 85,
+  "overall_severity": "low",
+  "top_drifting_category": { ... }
+}
+```
+
+### Mobile Hook
+
+```typescript
+import { usePacing } from '@/hooks/analytics';
+
+const {
+  pacing,
+  isLoading,
+  mode,           // 'kickoff' | 'pacing' | 'stability'
+  pacingStatus,   // 'behind' | 'on_track' | 'ahead'
+  targetAmount,
+  currentSpend,
+  pacingPercentage,
+  expectedPercentage,
+  stabilityScore,
+  refetch,
+} = usePacing();
+```
+
+### Key Files
+
+- `services/analytics/creep_scorer.py` - `get_pacing_status()` method
+- `models/analytics.py` - `PacingResponse`, `PacingMode`, `PacingStatus`
+- `hooks/analytics/usePacing.ts` - Mobile hook
+- `components/analytics/SpendingStabilityCard.tsx` - UI component with all three modes
