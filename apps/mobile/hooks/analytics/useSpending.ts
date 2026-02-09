@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { analyticsApi } from '@/services/api';
 import type {
@@ -8,14 +8,13 @@ import type {
   SpendingSummaryResponse,
 } from '@/types';
 
+import { useAsyncData } from '../useAsyncData';
+
 import type { BaseHookState } from './types';
 import { formatPeriodLabel } from './utils';
 
-interface UseSpendingSummaryState extends BaseHookState {
+interface UseSpendingSummaryResult extends BaseHookState {
   data: SpendingSummaryResponse | null;
-}
-
-interface UseSpendingSummaryResult extends UseSpendingSummaryState {
   refresh: () => Promise<void>;
   totalSpending: number;
   totalIncome: number;
@@ -25,84 +24,44 @@ interface UseSpendingSummaryResult extends UseSpendingSummaryState {
 }
 
 export function useSpendingSummary(periodType: PeriodType = 'monthly'): UseSpendingSummaryResult {
-  const [state, setState] = useState<UseSpendingSummaryState>({
-    data: null,
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-  });
-
-  const fetchData = useCallback(
-    async (isRefresh: boolean = false) => {
-      setState((prev) => ({
-        ...prev,
-        isLoading: !isRefresh,
-        isRefreshing: isRefresh,
-        error: null,
-      }));
-
-      try {
-        const response = await analyticsApi.getCurrentSpending(periodType);
-        setState({
-          data: response,
-          isLoading: false,
-          isRefreshing: false,
-          error: null,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load spending summary';
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          isRefreshing: false,
-          error: message,
-        }));
-      }
-    },
+  const { data, isLoading, isRefreshing, error, refresh } = useAsyncData(
+    () => analyticsApi.getCurrentSpending(periodType),
     [periodType]
   );
 
-  const refresh = useCallback(async () => {
-    await fetchData(true);
-  }, [fetchData]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
   const totalSpending = useMemo(
-    () => parseFloat(state.data?.total_spending ?? '0'),
-    [state.data?.total_spending]
+    () => parseFloat(data?.total_spending ?? '0'),
+    [data?.total_spending]
   );
 
   const totalIncome = useMemo(
-    () => parseFloat(state.data?.total_income ?? '0'),
-    [state.data?.total_income]
+    () => parseFloat(data?.total_income ?? '0'),
+    [data?.total_income]
   );
 
-  const netFlow = useMemo(() => parseFloat(state.data?.net_flow ?? '0'), [state.data?.net_flow]);
+  const netFlow = useMemo(() => parseFloat(data?.net_flow ?? '0'), [data?.net_flow]);
 
   const monthOverMonthChange = useMemo(() => {
-    const value = state.data?.month_over_month_change;
+    const value = data?.month_over_month_change;
     return value !== null && value !== undefined ? parseFloat(value) : null;
-  }, [state.data?.month_over_month_change]);
+  }, [data?.month_over_month_change]);
 
   return {
-    ...state,
+    data,
+    isLoading,
+    isRefreshing,
+    error,
     refresh,
     totalSpending,
     totalIncome,
     netFlow,
     monthOverMonthChange,
-    topCategories: state.data?.top_categories ?? [],
+    topCategories: data?.top_categories ?? [],
   };
 }
 
-interface UseSpendingHistoryState extends BaseHookState {
+interface UseSpendingHistoryResult extends BaseHookState {
   periods: SpendingPeriod[];
-}
-
-interface UseSpendingHistoryResult extends UseSpendingHistoryState {
   refresh: () => Promise<void>;
   chartData: { label: string; value: number; period: SpendingPeriod }[];
 }
@@ -111,64 +70,26 @@ export function useSpendingHistory(
   periodType: PeriodType = 'monthly',
   periodsCount: number = 6
 ): UseSpendingHistoryResult {
-  const [state, setState] = useState<UseSpendingHistoryState>({
-    periods: [],
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-  });
-
-  const fetchData = useCallback(
-    async (isRefresh: boolean = false) => {
-      setState((prev) => ({
-        ...prev,
-        isLoading: !isRefresh,
-        isRefreshing: isRefresh,
-        error: null,
-      }));
-
-      try {
-        const response = await analyticsApi.getSpendingSummaries({
-          periodType,
-          periods: periodsCount,
-        });
-        setState({
-          periods: response.periods,
-          isLoading: false,
-          isRefreshing: false,
-          error: null,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load spending history';
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          isRefreshing: false,
-          error: message,
-        }));
-      }
-    },
+  const { data, isLoading, isRefreshing, error, refresh } = useAsyncData(
+    () => analyticsApi.getSpendingSummaries({ periodType, periods: periodsCount }),
     [periodType, periodsCount]
   );
 
-  const refresh = useCallback(async () => {
-    await fetchData(true);
-  }, [fetchData]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+  const periods = useMemo(() => data?.periods ?? [], [data?.periods]);
 
   const chartData = useMemo(() => {
-    return [...state.periods].reverse().map((period) => ({
+    return [...periods].reverse().map((period) => ({
       label: formatPeriodLabel(period.period_start, periodType),
       value: parseFloat(period.total_outflow_excluding_transfers),
       period,
     }));
-  }, [state.periods, periodType]);
+  }, [periods, periodType]);
 
   return {
-    ...state,
+    periods,
+    isLoading,
+    isRefreshing,
+    error,
     refresh,
     chartData,
   };

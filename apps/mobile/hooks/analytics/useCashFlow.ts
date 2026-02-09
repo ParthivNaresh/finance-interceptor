@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { analyticsApi } from '@/services/api';
 import type {
@@ -9,14 +9,13 @@ import type {
   IncomeSourceListResponse,
 } from '@/types';
 
+import { useAsyncData, useAsyncMutation } from '../useAsyncData';
+
 import type { BaseHookState } from './types';
 import { formatPeriodLabel, getMonthlyMultiplier } from './utils';
 
-interface UseCashFlowMetricsState extends BaseHookState {
+interface UseCashFlowMetricsResult extends BaseHookState {
   data: CashFlowMetricsListResponse | null;
-}
-
-interface UseCashFlowMetricsResult extends UseCashFlowMetricsState {
   refresh: () => Promise<void>;
   periods: CashFlowMetrics[];
   averageSavingsRate: number | null;
@@ -24,81 +23,41 @@ interface UseCashFlowMetricsResult extends UseCashFlowMetricsState {
 }
 
 export function useCashFlowMetrics(periodsCount: number = 12): UseCashFlowMetricsResult {
-  const [state, setState] = useState<UseCashFlowMetricsState>({
-    data: null,
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-  });
-
-  const fetchData = useCallback(
-    async (isRefresh: boolean = false) => {
-      setState((prev) => ({
-        ...prev,
-        isLoading: !isRefresh,
-        isRefreshing: isRefresh,
-        error: null,
-      }));
-
-      try {
-        const response = await analyticsApi.getCashFlowMetrics({ periods: periodsCount });
-        setState({
-          data: response,
-          isLoading: false,
-          isRefreshing: false,
-          error: null,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load cash flow metrics';
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          isRefreshing: false,
-          error: message,
-        }));
-      }
-    },
+  const { data, isLoading, isRefreshing, error, refresh } = useAsyncData(
+    () => analyticsApi.getCashFlowMetrics({ periods: periodsCount }),
     [periodsCount]
   );
 
-  const refresh = useCallback(async () => {
-    await fetchData(true);
-  }, [fetchData]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
   const averageSavingsRate = useMemo(() => {
-    const value = state.data?.average_savings_rate;
+    const value = data?.average_savings_rate;
     return value ? parseFloat(value) : null;
-  }, [state.data?.average_savings_rate]);
+  }, [data?.average_savings_rate]);
 
   const chartData = useMemo(() => {
-    if (!state.data?.periods) return [];
+    if (!data?.periods) return [];
 
-    return [...state.data.periods].reverse().map((period) => ({
+    return [...data.periods].reverse().map((period) => ({
       label: formatPeriodLabel(period.period_start, 'monthly'),
       income: parseFloat(period.total_income),
       expenses: parseFloat(period.total_expenses),
       netFlow: parseFloat(period.net_cash_flow),
     }));
-  }, [state.data?.periods]);
+  }, [data?.periods]);
 
   return {
-    ...state,
+    data,
+    isLoading,
+    isRefreshing,
+    error,
     refresh,
-    periods: state.data?.periods ?? [],
+    periods: data?.periods ?? [],
     averageSavingsRate,
     chartData,
   };
 }
 
-interface UseCurrentCashFlowState extends BaseHookState {
+interface UseCurrentCashFlowResult extends BaseHookState {
   data: CashFlowMetrics | null;
-}
-
-interface UseCurrentCashFlowResult extends UseCurrentCashFlowState {
   refresh: () => Promise<void>;
   totalIncome: number;
   totalExpenses: number;
@@ -111,87 +70,51 @@ interface UseCurrentCashFlowResult extends UseCurrentCashFlowState {
 }
 
 export function useCurrentCashFlow(): UseCurrentCashFlowResult {
-  const [state, setState] = useState<UseCurrentCashFlowState>({
-    data: null,
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-  });
-
-  const fetchData = useCallback(async (isRefresh: boolean = false) => {
-    setState((prev) => ({
-      ...prev,
-      isLoading: !isRefresh,
-      isRefreshing: isRefresh,
-      error: null,
-    }));
-
-    try {
-      const response = await analyticsApi.getCurrentCashFlow();
-      setState({
-        data: response,
-        isLoading: false,
-        isRefreshing: false,
-        error: null,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load current cash flow';
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        isRefreshing: false,
-        error: message,
-      }));
-    }
-  }, []);
-
-  const refresh = useCallback(async () => {
-    await fetchData(true);
-  }, [fetchData]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+  const { data, isLoading, isRefreshing, error, refresh } = useAsyncData(
+    () => analyticsApi.getCurrentCashFlow(),
+    []
+  );
 
   const totalIncome = useMemo(
-    () => parseFloat(state.data?.total_income ?? '0'),
-    [state.data?.total_income]
+    () => parseFloat(data?.total_income ?? '0'),
+    [data?.total_income]
   );
 
   const totalExpenses = useMemo(
-    () => parseFloat(state.data?.total_expenses ?? '0'),
-    [state.data?.total_expenses]
+    () => parseFloat(data?.total_expenses ?? '0'),
+    [data?.total_expenses]
   );
 
   const netCashFlow = useMemo(
-    () => parseFloat(state.data?.net_cash_flow ?? '0'),
-    [state.data?.net_cash_flow]
+    () => parseFloat(data?.net_cash_flow ?? '0'),
+    [data?.net_cash_flow]
   );
 
   const savingsRate = useMemo(() => {
-    const value = state.data?.savings_rate;
+    const value = data?.savings_rate;
     return value ? parseFloat(value) : null;
-  }, [state.data?.savings_rate]);
+  }, [data?.savings_rate]);
 
   const recurringExpenses = useMemo(
-    () => parseFloat(state.data?.recurring_expenses ?? '0'),
-    [state.data?.recurring_expenses]
+    () => parseFloat(data?.recurring_expenses ?? '0'),
+    [data?.recurring_expenses]
   );
 
   const discretionaryExpenses = useMemo(
-    () => parseFloat(state.data?.discretionary_expenses ?? '0'),
-    [state.data?.discretionary_expenses]
+    () => parseFloat(data?.discretionary_expenses ?? '0'),
+    [data?.discretionary_expenses]
   );
 
-  const largestExpenseCategory = state.data?.largest_expense_category ?? null;
-
   const largestExpenseAmount = useMemo(() => {
-    const value = state.data?.largest_expense_amount;
+    const value = data?.largest_expense_amount;
     return value ? parseFloat(value) : null;
-  }, [state.data?.largest_expense_amount]);
+  }, [data?.largest_expense_amount]);
 
   return {
-    ...state,
+    data,
+    isLoading,
+    isRefreshing,
+    error,
     refresh,
     totalIncome,
     totalExpenses,
@@ -199,16 +122,13 @@ export function useCurrentCashFlow(): UseCurrentCashFlowResult {
     savingsRate,
     recurringExpenses,
     discretionaryExpenses,
-    largestExpenseCategory,
+    largestExpenseCategory: data?.largest_expense_category ?? null,
     largestExpenseAmount,
   };
 }
 
-interface UseIncomeSourcesState extends BaseHookState {
+interface UseIncomeSourcesResult extends BaseHookState {
   data: IncomeSourceListResponse | null;
-}
-
-interface UseIncomeSourcesResult extends UseIncomeSourcesState {
   refresh: () => Promise<void>;
   sources: IncomeSource[];
   highConfidenceCount: number;
@@ -216,121 +136,57 @@ interface UseIncomeSourcesResult extends UseIncomeSourcesState {
 }
 
 export function useIncomeSources(activeOnly: boolean = true): UseIncomeSourcesResult {
-  const [state, setState] = useState<UseIncomeSourcesState>({
-    data: null,
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-  });
-
-  const fetchData = useCallback(
-    async (isRefresh: boolean = false) => {
-      setState((prev) => ({
-        ...prev,
-        isLoading: !isRefresh,
-        isRefreshing: isRefresh,
-        error: null,
-      }));
-
-      try {
-        const response = await analyticsApi.getIncomeSources({ activeOnly });
-        setState({
-          data: response,
-          isLoading: false,
-          isRefreshing: false,
-          error: null,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load income sources';
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          isRefreshing: false,
-          error: message,
-        }));
-      }
-    },
+  const { data, isLoading, isRefreshing, error, refresh } = useAsyncData(
+    () => analyticsApi.getIncomeSources({ activeOnly }),
     [activeOnly]
   );
 
-  const refresh = useCallback(async () => {
-    await fetchData(true);
-  }, [fetchData]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
   const totalMonthlyIncome = useMemo(() => {
-    if (!state.data?.sources) return 0;
+    if (!data?.sources) return 0;
 
-    return state.data.sources.reduce((total, source) => {
+    return data.sources.reduce((total, source) => {
       const amount = parseFloat(source.average_amount);
       const multiplier = getMonthlyMultiplier(source.frequency);
       return total + amount * multiplier;
     }, 0);
-  }, [state.data?.sources]);
+  }, [data?.sources]);
 
   return {
-    ...state,
+    data,
+    isLoading,
+    isRefreshing,
+    error,
     refresh,
-    sources: state.data?.sources ?? [],
-    highConfidenceCount: state.data?.high_confidence_count ?? 0,
+    sources: data?.sources ?? [],
+    highConfidenceCount: data?.high_confidence_count ?? 0,
     totalMonthlyIncome,
   };
 }
 
-interface UseCashFlowComputationState {
+interface UseCashFlowComputationResult {
   isComputing: boolean;
   result: CashFlowComputationResult | null;
   error: string | null;
-}
-
-interface UseCashFlowComputationResult extends UseCashFlowComputationState {
   compute: (forceFull?: boolean) => Promise<CashFlowComputationResult>;
   reset: () => void;
 }
 
 export function useCashFlowComputation(): UseCashFlowComputationResult {
-  const [state, setState] = useState<UseCashFlowComputationState>({
-    isComputing: false,
-    result: null,
-    error: null,
-  });
+  const { data, isLoading, error, mutate, reset } = useAsyncMutation(
+    (forceFull: boolean = false) => analyticsApi.triggerCashFlowComputation(forceFull)
+  );
 
-  const compute = useCallback(async (forceFull: boolean = false): Promise<CashFlowComputationResult> => {
-    setState({ isComputing: true, result: null, error: null });
-
-    try {
-      const response = await analyticsApi.triggerCashFlowComputation(forceFull);
-      setState({
-        isComputing: false,
-        result: response,
-        error: response.status === 'failed' ? response.error_message : null,
-      });
-      return response;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Cash flow computation failed';
-      setState({
-        isComputing: false,
-        result: null,
-        error: message,
-      });
-      throw err;
-    }
-  }, []);
-
-  const reset = useCallback(() => {
-    setState({
-      isComputing: false,
-      result: null,
-      error: null,
-    });
-  }, []);
+  const computationError = useMemo(() => {
+    if (error) return error;
+    if (data?.status === 'failed') return data.error_message ?? 'Computation failed';
+    return null;
+  }, [error, data]);
 
   return {
-    ...state,
-    compute,
+    isComputing: isLoading,
+    result: data,
+    error: computationError,
+    compute: mutate,
     reset,
   };
 }

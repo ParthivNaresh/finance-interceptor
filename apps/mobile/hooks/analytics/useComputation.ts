@@ -1,59 +1,34 @@
-import { useCallback, useState } from 'react';
+import { useMemo } from 'react';
 
 import { analyticsApi } from '@/services/api';
 import type { ComputationResultResponse } from '@/types';
 
-interface UseAnalyticsComputationState {
+import { useAsyncMutation } from '../useAsyncData';
+
+interface UseAnalyticsComputationResult {
   isComputing: boolean;
   result: ComputationResultResponse | null;
   error: string | null;
-}
-
-interface UseAnalyticsComputationResult extends UseAnalyticsComputationState {
   compute: (forceFull?: boolean) => Promise<ComputationResultResponse>;
   reset: () => void;
 }
 
 export function useAnalyticsComputation(): UseAnalyticsComputationResult {
-  const [state, setState] = useState<UseAnalyticsComputationState>({
-    isComputing: false,
-    result: null,
-    error: null,
-  });
+  const { data, isLoading, error, mutate, reset } = useAsyncMutation(
+    (forceFull: boolean = false) => analyticsApi.triggerComputation(forceFull)
+  );
 
-  const compute = useCallback(async (forceFull: boolean = false): Promise<ComputationResultResponse> => {
-    setState({ isComputing: true, result: null, error: null });
-
-    try {
-      const response = await analyticsApi.triggerComputation(forceFull);
-      setState({
-        isComputing: false,
-        result: response,
-        error: response.status === 'failed' ? response.error_message : null,
-      });
-      return response;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Computation failed';
-      setState({
-        isComputing: false,
-        result: null,
-        error: message,
-      });
-      throw err;
-    }
-  }, []);
-
-  const reset = useCallback(() => {
-    setState({
-      isComputing: false,
-      result: null,
-      error: null,
-    });
-  }, []);
+  const computationError = useMemo(() => {
+    if (error) return error;
+    if (data?.status === 'failed') return data.error_message ?? 'Computation failed';
+    return null;
+  }, [error, data]);
 
   return {
-    ...state,
-    compute,
+    isComputing: isLoading,
+    result: data,
+    error: computationError,
+    compute: mutate,
     reset,
   };
 }

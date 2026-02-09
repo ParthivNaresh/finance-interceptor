@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo } from 'react';
 
 import { analyticsApi } from '@/services/api/analytics';
 import type { PacingMode, PacingResponse, PacingStatus } from '@/types';
 
+import { useAsyncData } from '../useAsyncData';
+
 interface UsePacingResult {
   pacing: PacingResponse | null;
   isLoading: boolean;
-  error: Error | null;
+  error: string | null;
   refetch: () => Promise<void>;
   mode: PacingMode;
   isKickoff: boolean;
@@ -24,63 +26,34 @@ interface UsePacingResult {
 }
 
 export function usePacing(): UsePacingResult {
-  const [pacing, setPacing] = useState<PacingResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const { data, isLoading, error, refresh } = useAsyncData(
+    () => analyticsApi.getPacing(),
+    []
+  );
 
-  const fetchPacing = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const data = await analyticsApi.getPacing();
-      setPacing(data);
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('404')) {
-        setPacing(null);
-      } else {
-        setError(err instanceof Error ? err : new Error('Failed to fetch pacing'));
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const mode: PacingMode = data?.mode ?? 'kickoff';
 
-  useEffect(() => {
-    void fetchPacing();
-  }, [fetchPacing]);
-
-  const mode: PacingMode = pacing?.mode ?? 'kickoff';
-  const isKickoff = mode === 'kickoff';
-  const isPacing = mode === 'pacing';
-  const isStability = mode === 'stability';
-
-  const pacingStatus: PacingStatus = pacing?.pacing_status ?? 'on_track';
-  const targetAmount = pacing ? parseFloat(pacing.target_amount) : 0;
-  const currentSpend = pacing ? parseFloat(pacing.current_discretionary_spend) : 0;
-  const pacingPercentage = pacing ? parseFloat(pacing.pacing_percentage) : 0;
-  const expectedPercentage = pacing ? parseFloat(pacing.expected_pacing_percentage) : 0;
-  const pacingDifference = pacing ? parseFloat(pacing.pacing_difference) : 0;
-  const daysIntoMonth = pacing?.days_into_period ?? 1;
-  const totalDaysInMonth = pacing?.total_days_in_period ?? 30;
-  const stabilityScore = pacing?.stability_score ?? null;
+  const derivedValues = useMemo(() => ({
+    isKickoff: mode === 'kickoff',
+    isPacing: mode === 'pacing',
+    isStability: mode === 'stability',
+    pacingStatus: data?.pacing_status ?? 'on_track',
+    targetAmount: data ? parseFloat(data.target_amount) : 0,
+    currentSpend: data ? parseFloat(data.current_discretionary_spend) : 0,
+    pacingPercentage: data ? parseFloat(data.pacing_percentage) : 0,
+    expectedPercentage: data ? parseFloat(data.expected_pacing_percentage) : 0,
+    pacingDifference: data ? parseFloat(data.pacing_difference) : 0,
+    daysIntoMonth: data?.days_into_period ?? 1,
+    totalDaysInMonth: data?.total_days_in_period ?? 30,
+    stabilityScore: data?.stability_score ?? null,
+  }), [data, mode]);
 
   return {
-    pacing,
+    pacing: data,
     isLoading,
     error,
-    refetch: fetchPacing,
+    refetch: refresh,
     mode,
-    isKickoff,
-    isPacing,
-    isStability,
-    pacingStatus,
-    targetAmount,
-    currentSpend,
-    pacingPercentage,
-    expectedPercentage,
-    pacingDifference,
-    daysIntoMonth,
-    totalDaysInMonth,
-    stabilityScore,
+    ...derivedValues,
   };
 }

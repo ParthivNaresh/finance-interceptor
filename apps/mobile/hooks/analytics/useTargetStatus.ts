@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo } from 'react';
 
 import { analyticsApi } from '@/services/api/analytics';
 import type { TargetStatusResponse, TargetStatusType } from '@/types';
 
+import { useAsyncData } from '../useAsyncData';
+
 interface UseTargetStatusResult {
   targetStatus: TargetStatusResponse | null;
   isLoading: boolean;
-  error: Error | null;
+  error: string | null;
   refetch: () => Promise<void>;
   isBuilding: boolean;
   isEstablished: boolean;
@@ -14,42 +16,26 @@ interface UseTargetStatusResult {
 }
 
 export function useTargetStatus(): UseTargetStatusResult {
-  const [targetStatus, setTargetStatus] = useState<TargetStatusResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const { data, isLoading, error, refresh } = useAsyncData(
+    () => analyticsApi.getTargetStatus(),
+    []
+  );
 
-  const fetchTargetStatus = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const data = await analyticsApi.getTargetStatus();
-      setTargetStatus(data);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch target status'));
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const status: TargetStatusType = data?.status ?? 'building';
 
-  useEffect(() => {
-    void fetchTargetStatus();
-  }, [fetchTargetStatus]);
-
-  const status: TargetStatusType = targetStatus?.status ?? 'building';
-  const isBuilding = status === 'building';
-  const isEstablished = status === 'established';
-
-  const progressPercentage = targetStatus
-    ? Math.min(100, (targetStatus.months_available / targetStatus.months_required) * 100)
-    : 0;
+  const derivedValues = useMemo(() => ({
+    isBuilding: status === 'building',
+    isEstablished: status === 'established',
+    progressPercentage: data
+      ? Math.min(100, (data.months_available / data.months_required) * 100)
+      : 0,
+  }), [data, status]);
 
   return {
-    targetStatus,
+    targetStatus: data,
     isLoading,
     error,
-    refetch: fetchTargetStatus,
-    isBuilding,
-    isEstablished,
-    progressPercentage,
+    refetch: refresh,
+    ...derivedValues,
   };
 }

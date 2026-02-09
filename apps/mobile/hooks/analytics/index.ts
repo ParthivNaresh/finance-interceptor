@@ -14,7 +14,17 @@ export {
   useLifestyleBaselines,
   useLifestyleCreepHistory,
   useLifestyleCreepSummary,
-} from './useLifestyleCreep';
+} from './lifestyle-creep';
+export type {
+  CreepHistoryChartData,
+  CreepTrend,
+  UseBaselineComputationResult,
+  UseCategoryCreepHistoryResult,
+  UseCreepComputationResult,
+  UseLifestyleBaselinesResult,
+  UseLifestyleCreepHistoryResult,
+  UseLifestyleCreepSummaryResult,
+} from './lifestyle-creep';
 export {
   useMerchantBreakdown,
   useMerchantBreakdownByRange,

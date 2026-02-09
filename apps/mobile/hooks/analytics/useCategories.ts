@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { analyticsApi, type MerchantTimeRange } from '@/services/api';
 import type {
@@ -11,14 +11,13 @@ import type {
   SubcategorySpendingSummary,
 } from '@/types';
 
+import { useAsyncData } from '../useAsyncData';
+
 import type { BaseHookState } from './types';
 import { formatPeriodLabel } from './utils';
 
-interface UseCategoryBreakdownState extends BaseHookState {
+interface UseCategoryBreakdownResult extends BaseHookState {
   data: CategoryBreakdownResponse | null;
-}
-
-interface UseCategoryBreakdownResult extends UseCategoryBreakdownState {
   refresh: () => Promise<void>;
   categories: CategorySpendingSummary[];
   totalSpending: number;
@@ -28,72 +27,29 @@ export function useCategoryBreakdown(
   periodStart?: string,
   periodType: PeriodType = 'monthly'
 ): UseCategoryBreakdownResult {
-  const [state, setState] = useState<UseCategoryBreakdownState>({
-    data: null,
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-  });
-
-  const fetchData = useCallback(
-    async (isRefresh: boolean = false) => {
-      setState((prev) => ({
-        ...prev,
-        isLoading: !isRefresh,
-        isRefreshing: isRefresh,
-        error: null,
-      }));
-
-      try {
-        const response = await analyticsApi.getCategoryBreakdown({
-          periodStart,
-          periodType,
-        });
-        setState({
-          data: response,
-          isLoading: false,
-          isRefreshing: false,
-          error: null,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load category breakdown';
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          isRefreshing: false,
-          error: message,
-        }));
-      }
-    },
+  const { data, isLoading, isRefreshing, error, refresh } = useAsyncData(
+    () => analyticsApi.getCategoryBreakdown({ periodStart, periodType }),
     [periodStart, periodType]
   );
 
-  const refresh = useCallback(async () => {
-    await fetchData(true);
-  }, [fetchData]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
   const totalSpending = useMemo(
-    () => parseFloat(state.data?.total_spending ?? '0'),
-    [state.data?.total_spending]
+    () => parseFloat(data?.total_spending ?? '0'),
+    [data?.total_spending]
   );
 
   return {
-    ...state,
+    data,
+    isLoading,
+    isRefreshing,
+    error,
     refresh,
-    categories: state.data?.categories ?? [],
+    categories: data?.categories ?? [],
     totalSpending,
   };
 }
 
-interface UseCategoryBreakdownByRangeState extends BaseHookState {
+interface UseCategoryBreakdownByRangeResult extends BaseHookState {
   data: CategoryBreakdownResponse | null;
-}
-
-interface UseCategoryBreakdownByRangeResult extends UseCategoryBreakdownByRangeState {
   refresh: () => Promise<void>;
   categories: CategorySpendingSummary[];
   totalSpending: number;
@@ -103,69 +59,29 @@ export function useCategoryBreakdownByRange(
   timeRange: MerchantTimeRange = 'month',
   limit: number = 20
 ): UseCategoryBreakdownByRangeResult {
-  const [state, setState] = useState<UseCategoryBreakdownByRangeState>({
-    data: null,
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-  });
-
-  const fetchData = useCallback(
-    async (isRefresh: boolean = false) => {
-      setState((prev) => ({
-        ...prev,
-        isLoading: !isRefresh,
-        isRefreshing: isRefresh,
-        error: null,
-      }));
-
-      try {
-        const response = await analyticsApi.getCategoryBreakdownByRange(timeRange, limit);
-        setState({
-          data: response,
-          isLoading: false,
-          isRefreshing: false,
-          error: null,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load category breakdown';
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          isRefreshing: false,
-          error: message,
-        }));
-      }
-    },
+  const { data, isLoading, isRefreshing, error, refresh } = useAsyncData(
+    () => analyticsApi.getCategoryBreakdownByRange(timeRange, limit),
     [timeRange, limit]
   );
 
-  const refresh = useCallback(async () => {
-    await fetchData(true);
-  }, [fetchData]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
   const totalSpending = useMemo(
-    () => parseFloat(state.data?.total_spending ?? '0'),
-    [state.data?.total_spending]
+    () => parseFloat(data?.total_spending ?? '0'),
+    [data?.total_spending]
   );
 
   return {
-    ...state,
+    data,
+    isLoading,
+    isRefreshing,
+    error,
     refresh,
-    categories: state.data?.categories ?? [],
+    categories: data?.categories ?? [],
     totalSpending,
   };
 }
 
-interface UseCategoryHistoryState extends BaseHookState {
+interface UseCategoryHistoryResult extends BaseHookState {
   history: CategorySpendingSummary[];
-}
-
-interface UseCategoryHistoryResult extends UseCategoryHistoryState {
   refresh: () => Promise<void>;
   chartData: { label: string; value: number }[];
 }
@@ -175,79 +91,33 @@ export function useCategoryHistory(
   periodType: PeriodType = 'monthly',
   months: number = 12
 ): UseCategoryHistoryResult {
-  const [state, setState] = useState<UseCategoryHistoryState>({
-    history: [],
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-  });
-
-  const fetchData = useCallback(
-    async (isRefresh: boolean = false) => {
-      if (!category) {
-        setState((prev) => ({ ...prev, isLoading: false }));
-        return;
-      }
-
-      setState((prev) => ({
-        ...prev,
-        isLoading: !isRefresh,
-        isRefreshing: isRefresh,
-        error: null,
-      }));
-
-      try {
-        const response = await analyticsApi.getCategoryHistory({
-          category,
-          periodType,
-          months,
-        });
-        setState({
-          history: response,
-          isLoading: false,
-          isRefreshing: false,
-          error: null,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load category history';
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          isRefreshing: false,
-          error: message,
-        }));
-      }
-    },
-    [category, periodType, months]
+  const { data, isLoading, isRefreshing, error, refresh } = useAsyncData(
+    () => analyticsApi.getCategoryHistory({ category, periodType, months }),
+    [category, periodType, months],
+    { enabled: Boolean(category) }
   );
 
-  const refresh = useCallback(async () => {
-    await fetchData(true);
-  }, [fetchData]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+  const history = useMemo(() => data ?? [], [data]);
 
   const chartData = useMemo(() => {
-    return [...state.history].reverse().map((item, index) => ({
+    return [...history].reverse().map((item, index) => ({
       label: `M${index + 1}`,
       value: parseFloat(item.total_amount),
     }));
-  }, [state.history]);
+  }, [history]);
 
   return {
-    ...state,
+    history,
+    isLoading,
+    isRefreshing,
+    error,
     refresh,
     chartData,
   };
 }
 
-interface UseCategoryDetailState extends BaseHookState {
+interface UseCategoryDetailResult extends BaseHookState {
   data: CategoryDetailResponse | null;
-}
-
-interface UseCategoryDetailResult extends UseCategoryDetailState {
   refresh: () => Promise<void>;
   totalAmount: number;
   averageTransaction: number | null;
@@ -260,87 +130,43 @@ export function useCategoryDetail(
   categoryName: string,
   timeRange: MerchantTimeRange = 'month'
 ): UseCategoryDetailResult {
-  const [state, setState] = useState<UseCategoryDetailState>({
-    data: null,
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-  });
-
-  const fetchData = useCallback(
-    async (isRefresh: boolean = false) => {
-      if (!categoryName) {
-        setState((prev) => ({ ...prev, isLoading: false }));
-        return;
-      }
-
-      setState((prev) => ({
-        ...prev,
-        isLoading: !isRefresh,
-        isRefreshing: isRefresh,
-        error: null,
-      }));
-
-      try {
-        const response = await analyticsApi.getCategoryDetail(categoryName, timeRange);
-        setState({
-          data: response,
-          isLoading: false,
-          isRefreshing: false,
-          error: null,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load category details';
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          isRefreshing: false,
-          error: message,
-        }));
-      }
-    },
-    [categoryName, timeRange]
+  const { data, isLoading, isRefreshing, error, refresh } = useAsyncData(
+    () => analyticsApi.getCategoryDetail(categoryName, timeRange),
+    [categoryName, timeRange],
+    { enabled: Boolean(categoryName) }
   );
 
-  const refresh = useCallback(async () => {
-    await fetchData(true);
-  }, [fetchData]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
   const totalAmount = useMemo(
-    () => parseFloat(state.data?.total_amount ?? '0'),
-    [state.data?.total_amount]
+    () => parseFloat(data?.total_amount ?? '0'),
+    [data?.total_amount]
   );
 
   const averageTransaction = useMemo(() => {
-    const value = state.data?.average_transaction;
+    const value = data?.average_transaction;
     return value ? parseFloat(value) : null;
-  }, [state.data?.average_transaction]);
+  }, [data?.average_transaction]);
 
   const percentageOfTotal = useMemo(() => {
-    const value = state.data?.percentage_of_total_spending;
+    const value = data?.percentage_of_total_spending;
     return value ? parseFloat(value) : null;
-  }, [state.data?.percentage_of_total_spending]);
+  }, [data?.percentage_of_total_spending]);
 
   return {
-    ...state,
+    data,
+    isLoading,
+    isRefreshing,
+    error,
     refresh,
     totalAmount,
     averageTransaction,
     percentageOfTotal,
-    subcategories: state.data?.subcategories ?? [],
-    topMerchants: state.data?.top_merchants ?? [],
+    subcategories: data?.subcategories ?? [],
+    topMerchants: data?.top_merchants ?? [],
   };
 }
 
-interface UseCategorySpendingHistoryState extends BaseHookState {
+interface UseCategorySpendingHistoryResult extends BaseHookState {
   history: CategorySpendingHistoryItem[];
-}
-
-interface UseCategorySpendingHistoryResult extends UseCategorySpendingHistoryState {
   refresh: () => Promise<void>;
   chartData: { label: string; value: number; periodStart: string }[];
 }
@@ -350,66 +176,27 @@ export function useCategorySpendingHistory(
   periodType: PeriodType = 'monthly',
   months: number = 6
 ): UseCategorySpendingHistoryResult {
-  const [state, setState] = useState<UseCategorySpendingHistoryState>({
-    history: [],
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-  });
-
-  const fetchData = useCallback(
-    async (isRefresh: boolean = false) => {
-      if (!categoryName) {
-        setState((prev) => ({ ...prev, isLoading: false }));
-        return;
-      }
-
-      setState((prev) => ({
-        ...prev,
-        isLoading: !isRefresh,
-        isRefreshing: isRefresh,
-        error: null,
-      }));
-
-      try {
-        const response = await analyticsApi.getCategorySpendingHistory(categoryName, periodType, months);
-        setState({
-          history: response,
-          isLoading: false,
-          isRefreshing: false,
-          error: null,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load category history';
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          isRefreshing: false,
-          error: message,
-        }));
-      }
-    },
-    [categoryName, periodType, months]
+  const { data, isLoading, isRefreshing, error, refresh } = useAsyncData(
+    () => analyticsApi.getCategorySpendingHistory(categoryName, periodType, months),
+    [categoryName, periodType, months],
+    { enabled: Boolean(categoryName) }
   );
 
-  const refresh = useCallback(async () => {
-    await fetchData(true);
-  }, [fetchData]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+  const history = useMemo(() => data ?? [], [data]);
 
   const chartData = useMemo(() => {
-    return [...state.history].reverse().map((item) => ({
+    return [...history].reverse().map((item) => ({
       label: formatPeriodLabel(item.period_start, periodType),
       value: parseFloat(item.total_amount),
       periodStart: item.period_start,
     }));
-  }, [state.history, periodType]);
+  }, [history, periodType]);
 
   return {
-    ...state,
+    history,
+    isLoading,
+    isRefreshing,
+    error,
     refresh,
     chartData,
   };
