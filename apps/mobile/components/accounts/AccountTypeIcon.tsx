@@ -1,23 +1,21 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { colors, spacing } from '@/styles';
+import { colors } from '@/styles';
 import { getAccountTypeIcon } from '@/utils';
 
-interface AccountTypeIconProps {
-  type: string;
-  size?: 'sm' | 'md' | 'lg';
-}
+import { accountTypeIconStyles as styles } from './styles';
+import type { AccountIconSize, AccountTypeIconProps } from './types';
 
-const sizeMap = {
+const SIZE_MAP: Record<AccountIconSize, { container: number; icon: number }> = {
   sm: { container: 32, icon: 14 },
   md: { container: 40, icon: 18 },
   lg: { container: 48, icon: 22 },
-} as const;
+};
 
 export function AccountTypeIcon({ type, size = 'md' }: AccountTypeIconProps) {
   const iconName = getAccountTypeIcon(type);
-  const dimensions = sizeMap[size];
+  const dimensions = SIZE_MAP[size];
 
   return (
     <View
@@ -34,12 +32,3 @@ export function AccountTypeIcon({ type, size = 'md' }: AccountTypeIconProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: 'rgba(45, 212, 191, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: spacing.md,
-  },
-});

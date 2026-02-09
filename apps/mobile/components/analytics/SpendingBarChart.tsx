@@ -4,37 +4,19 @@ import {
   Animated,
   Easing,
   LayoutChangeEvent,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { BarChart } from 'react-native-gifted-charts';
 
-import { colors, spacing, typography } from '@/styles';
+import { useTranslation } from '@/hooks';
+import { colors, spacing } from '@/styles';
 
-export interface ChartDataPoint {
-  label: string;
-  value: number;
-  date?: string;
-}
+import { useChartMetrics } from './hooks';
+import { spendingBarChartStyles as styles } from './styles';
+import type { ChartDataPoint, SpendingBarChartProps, TooltipData } from './types';
 
-interface TooltipData {
-  item: ChartDataPoint;
-  index: number;
-  x: number;
-  y: number;
-}
-
-interface SpendingBarChartProps {
-  data: ChartDataPoint[];
-  height?: number;
-  barColor?: string;
-  onBarPress?: (item: ChartDataPoint, index: number) => void;
-  showAverage?: boolean;
-  showTopLabels?: boolean;
-  formatValue?: (value: number) => string;
-  animated?: boolean;
-}
+export type { ChartDataPoint } from './types';
 
 const DEFAULT_HEIGHT = 160;
 const TOP_LABEL_HEIGHT = 24;
@@ -64,27 +46,14 @@ export function SpendingBarChart({
   formatValue = defaultFormatValue,
   animated = true,
 }: SpendingBarChartProps) {
+  const { t } = useTranslation();
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const tooltipOpacity = useRef(new Animated.Value(0)).current;
   const tooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const totalHeight = showTopLabels ? height + TOP_LABEL_HEIGHT : height;
-
-  const { maxValue, average } = useMemo(() => {
-    if (data.length === 0) {
-      return { maxValue: 100, average: 0 };
-    }
-
-    const values = data.map((d) => d.value);
-    const max = Math.max(...values);
-    const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
-
-    const paddedMax = max * 1.15;
-    const roundedMax = Math.ceil(paddedMax / 100) * 100 || 100;
-
-    return { maxValue: roundedMax, average: avg };
-  }, [data]);
+  const { maxValue, average } = useChartMetrics(data);
 
   const handleBarPressInternal = useCallback(
     (item: ChartDataPoint, index: number) => {
@@ -206,15 +175,15 @@ export function SpendingBarChart({
     return (
       <View style={[styles.averageLineContainer, { bottom: bottomOffset }]}>
         <View style={styles.averageLine} />
-        <Text style={styles.averageLabel}>Avg: {formatValue(average)}</Text>
+        <Text style={styles.averageLabel}>{t('analytics.chart.average')} {formatValue(average)}</Text>
       </View>
     );
-  }, [showAverage, average, maxValue, height, formatValue, showTopLabels]);
+  }, [t, showAverage, average, maxValue, height, formatValue, showTopLabels]);
 
   if (data.length === 0) {
     return (
       <View style={[styles.emptyContainer, { height: totalHeight }]}>
-        <Text style={styles.emptyText}>No data available</Text>
+        <Text style={styles.emptyText}>{t('analytics.chart.noData')}</Text>
       </View>
     );
   }
@@ -249,79 +218,3 @@ export function SpendingBarChart({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    width: '100%',
-  },
-  chartWrapper: {
-    position: 'relative',
-  },
-  emptyContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background.secondary,
-    borderRadius: 12,
-  },
-  emptyText: {
-    ...typography.bodyMedium,
-    color: colors.text.muted,
-  },
-  xAxisLabel: {
-    ...typography.caption,
-    color: colors.text.muted,
-    marginTop: 4,
-  },
-  topLabelContainer: {
-    marginBottom: 4,
-  },
-  barTopLabel: {
-    ...typography.caption,
-    color: colors.text.secondary,
-    fontSize: 10,
-  },
-  averageLineContainer: {
-    position: 'absolute',
-    left: INITIAL_SPACING,
-    right: INITIAL_SPACING,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  averageLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.text.muted,
-    opacity: 0.4,
-  },
-  averageLabel: {
-    ...typography.caption,
-    color: colors.text.muted,
-    marginLeft: spacing.xs,
-    fontSize: 10,
-  },
-  tooltip: {
-    position: 'absolute',
-    backgroundColor: colors.background.tertiary,
-    borderRadius: 8,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-    borderWidth: 1,
-    borderColor: colors.border.secondary,
-  },
-  tooltipValue: {
-    ...typography.titleSmall,
-    fontWeight: '600',
-    color: colors.text.primary,
-  },
-  tooltipDate: {
-    ...typography.caption,
-    color: colors.text.muted,
-    marginTop: 2,
-  },
-});

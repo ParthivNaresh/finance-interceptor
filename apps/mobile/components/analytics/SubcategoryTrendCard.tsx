@@ -1,27 +1,17 @@
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback } from 'react';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '@/styles';
+import { useTranslation } from '@/hooks';
+import { colors } from '@/styles';
 
 import { GlassCard } from '../glass';
-import type { SubcategoryDataPoint } from './SubcategoryChart';
+import { useViewToggle } from './hooks';
 import { SubcategoryChart } from './SubcategoryChart';
-
-type ViewMode = 'breakdown' | 'trend';
-
-interface SubcategoryTrendCardProps {
-  title?: string;
-  data: SubcategoryDataPoint[];
-  isLoading?: boolean;
-  error?: string | null;
-  categoryColor?: string;
-  onItemPress?: (item: SubcategoryDataPoint, index: number) => void;
-  maxItems?: number;
-  showViewToggle?: boolean;
-}
+import { subcategoryTrendCardStyles as styles } from './styles';
+import type { SubcategoryTrendCardProps, ViewMode } from './types';
 
 export function SubcategoryTrendCard({
-  title = 'Subcategories',
+  title,
   data,
   isLoading = false,
   error = null,
@@ -30,18 +20,17 @@ export function SubcategoryTrendCard({
   maxItems = 8,
   showViewToggle = false,
 }: SubcategoryTrendCardProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>('breakdown');
+  const { t } = useTranslation();
+  const { viewMode, handleViewModeChange } = useViewToggle('breakdown');
 
-  const handleViewModeChange = useCallback((mode: ViewMode) => {
-    setViewMode(mode);
-  }, []);
+  const displayTitle = title ?? t('transactionDetail.subcategory');
 
   const renderViewToggle = useCallback(() => {
     if (!showViewToggle) return null;
 
     const modes: { key: ViewMode; label: string }[] = [
-      { key: 'breakdown', label: 'Breakdown' },
-      { key: 'trend', label: 'Trend' },
+      { key: 'breakdown', label: t('analytics.viewToggle.breakdown') },
+      { key: 'trend', label: t('analytics.viewToggle.trend') },
     ];
 
     return (
@@ -62,7 +51,7 @@ export function SubcategoryTrendCard({
         })}
       </View>
     );
-  }, [showViewToggle, viewMode, handleViewModeChange]);
+  }, [t, showViewToggle, viewMode, handleViewModeChange]);
 
   const renderContent = useCallback(() => {
     if (isLoading) {
@@ -84,7 +73,7 @@ export function SubcategoryTrendCard({
     if (data.length === 0) {
       return (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No subcategory data available</Text>
+          <Text style={styles.emptyText}>{t('analytics.subcategory.noData')}</Text>
         </View>
       );
     }
@@ -97,75 +86,15 @@ export function SubcategoryTrendCard({
         maxItems={maxItems}
       />
     );
-  }, [isLoading, error, data, categoryColor, onItemPress, maxItems]);
+  }, [t, isLoading, error, data, categoryColor, onItemPress, maxItems]);
 
   return (
     <GlassCard variant="subtle" padding="md">
       <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title}>{displayTitle}</Text>
         {renderViewToggle()}
       </View>
       {renderContent()}
     </GlassCard>
   );
 }
-
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  title: {
-    ...typography.titleSmall,
-    color: colors.text.primary,
-  },
-  viewToggle: {
-    flexDirection: 'row',
-    backgroundColor: colors.background.tertiary,
-    borderRadius: 8,
-    padding: 2,
-  },
-  viewButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-  },
-  viewButtonSelected: {
-    backgroundColor: colors.background.primary,
-  },
-  viewButtonText: {
-    ...typography.caption,
-    color: colors.text.muted,
-    fontWeight: '500',
-  },
-  viewButtonTextSelected: {
-    color: colors.text.primary,
-  },
-  loadingContainer: {
-    height: 150,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorContainer: {
-    height: 150,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  errorText: {
-    ...typography.bodyMedium,
-    color: colors.accent.error,
-    textAlign: 'center',
-  },
-  emptyContainer: {
-    height: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyText: {
-    ...typography.bodyMedium,
-    color: colors.text.muted,
-  },
-});

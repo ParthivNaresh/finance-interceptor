@@ -1,19 +1,9 @@
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, View } from 'react-native';
 
-import { authStyles } from '@/features/auth';
+import { AuthButton, AuthFooter, AuthHeader, AuthInput, authStyles } from '@/components/auth';
 import { useAuth, useTranslation } from '@/hooks';
-import { colors } from '@/styles';
 
 export default function RegisterScreen() {
   const { t } = useTranslation();
@@ -25,12 +15,12 @@ export default function RegisterScreen() {
 
   const handleSignUp = async () => {
     if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
-      Alert.alert(t('common.error'), 'Please fill in all fields');
+      Alert.alert(t('common.error'), t('auth.fillAllFields'));
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert(t('common.error'), 'Passwords do not match');
+      Alert.alert(t('common.error'), t('auth.passwordsDoNotMatch'));
       return;
     }
 
@@ -43,8 +33,8 @@ export default function RegisterScreen() {
     try {
       await signUp(email.trim(), password);
       Alert.alert(
-        'Success',
-        'Account created! Please check your email to verify your account.',
+        t('auth.success'),
+        t('auth.accountCreated'),
         [{ text: t('common.ok'), onPress: () => router.replace('/(auth)/login') }]
       );
     } catch (error) {
@@ -61,66 +51,49 @@ export default function RegisterScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={authStyles.content}>
-        <Text style={authStyles.title}>{t('auth.registerTitle')}</Text>
-        <Text style={authStyles.subtitle}>{t('auth.registerSubtitle')}</Text>
+        <AuthHeader
+          title={t('auth.registerTitle')}
+          subtitle={t('auth.registerSubtitle')}
+        />
 
         <View style={authStyles.form}>
-          <TextInput
-            style={authStyles.input}
-            placeholder={t('auth.email')}
-            placeholderTextColor={colors.text.muted}
+          <AuthInput
             value={email}
             onChangeText={setEmail}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            editable={!isLoading}
+            placeholder={t('auth.email')}
+            type="email"
+            disabled={isLoading}
+            autoFocus
           />
 
-          <TextInput
-            style={authStyles.input}
-            placeholder={t('auth.password')}
-            placeholderTextColor={colors.text.muted}
+          <AuthInput
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
-            textContentType="newPassword"
-            editable={!isLoading}
+            placeholder={t('auth.password')}
+            type="newPassword"
+            disabled={isLoading}
           />
 
-          <TextInput
-            style={authStyles.input}
-            placeholder={t('auth.confirmPassword')}
-            placeholderTextColor={colors.text.muted}
+          <AuthInput
             value={confirmPassword}
             onChangeText={setConfirmPassword}
-            secureTextEntry
-            textContentType="newPassword"
-            editable={!isLoading}
+            placeholder={t('auth.confirmPassword')}
+            type="newPassword"
+            disabled={isLoading}
           />
 
-          <Pressable
-            style={[authStyles.button, isLoading && authStyles.buttonDisabled]}
+          <AuthButton
             onPress={() => void handleSignUp()}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color={colors.background.primary} />
-            ) : (
-              <Text style={authStyles.buttonText}>{t('auth.register')}</Text>
-            )}
-          </Pressable>
+            title={t('auth.register')}
+            loading={isLoading}
+          />
         </View>
 
-        <View style={authStyles.footer}>
-          <Text style={authStyles.footerText}>{t('auth.hasAccount')} </Text>
-          <Link href="/(auth)/login" asChild>
-            <Pressable>
-              <Text style={authStyles.linkText}>{t('auth.login')}</Text>
-            </Pressable>
-          </Link>
-        </View>
+        <AuthFooter
+          message={t('auth.hasAccount')}
+          linkText={t('auth.login')}
+          linkHref="/(auth)/login"
+        />
       </View>
     </KeyboardAvoidingView>
   );

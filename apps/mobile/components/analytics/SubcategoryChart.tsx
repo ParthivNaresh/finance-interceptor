@@ -4,43 +4,29 @@ import {
   Animated,
   Easing,
   Pressable,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
 
-import { colors, spacing, typography } from '@/styles';
+import { useTranslation } from '@/hooks';
+import { colors } from '@/styles';
 
-export interface SubcategoryDataPoint {
-  name: string;
-  value: number;
-  percentage: number;
-  transactionCount: number;
-}
+import { subcategoryChartStyles as styles } from './styles';
+import type {
+  AnimatedBarProps,
+  SubcategoryChartProps,
+  SubcategoryDataPoint,
+  SubcategoryItemProps,
+} from './types';
 
-interface SubcategoryChartProps {
-  data: SubcategoryDataPoint[];
-  categoryColor?: string;
-  onItemPress?: (item: SubcategoryDataPoint, index: number) => void;
-  maxItems?: number;
-  formatValue?: (value: number) => string;
-  animated?: boolean;
-}
+export type { SubcategoryDataPoint } from './types';
 
-const BAR_HEIGHT = 8;
 const MAX_BAR_WIDTH_PERCENT = 0.6;
 const ANIMATION_DURATION = 400;
 const ANIMATION_STAGGER = 50;
 
 function defaultFormatValue(value: number): string {
   return `$${value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-
-interface AnimatedBarProps {
-  percentage: number;
-  color: string;
-  delay: number;
-  animated: boolean;
 }
 
 function AnimatedBar({ percentage, color, delay, animated }: AnimatedBarProps) {
@@ -82,15 +68,6 @@ function AnimatedBar({ percentage, color, delay, animated }: AnimatedBarProps) {
   );
 }
 
-interface SubcategoryItemProps {
-  item: SubcategoryDataPoint;
-  index: number;
-  categoryColor: string;
-  onPress?: () => void;
-  formatValue: (value: number) => string;
-  animated: boolean;
-}
-
 function SubcategoryItem({
   item,
   index,
@@ -98,7 +75,8 @@ function SubcategoryItem({
   onPress,
   formatValue,
   animated,
-}: SubcategoryItemProps) {
+  transactionLabel,
+}: SubcategoryItemProps & { transactionLabel: string }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = useCallback(() => {
@@ -145,9 +123,7 @@ function SubcategoryItem({
           delay={index * ANIMATION_STAGGER}
           animated={animated}
         />
-        <Text style={styles.transactionCount}>
-          {item.transactionCount} transaction{item.transactionCount !== 1 ? 's' : ''}
-        </Text>
+        <Text style={styles.transactionCount}>{transactionLabel}</Text>
       </Animated.View>
     </Pressable>
   );
@@ -161,6 +137,8 @@ export function SubcategoryChart({
   formatValue = defaultFormatValue,
   animated = true,
 }: SubcategoryChartProps) {
+  const { t } = useTranslation();
+
   const displayData = useMemo(() => {
     return data.slice(0, maxItems);
   }, [data, maxItems]);
@@ -175,7 +153,7 @@ export function SubcategoryChart({
   if (displayData.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>No subcategory data</Text>
+        <Text style={styles.emptyText}>{t('analytics.subcategory.noData')}</Text>
       </View>
     );
   }
@@ -191,83 +169,9 @@ export function SubcategoryChart({
           onPress={() => handleItemPress(item, index)}
           formatValue={formatValue}
           animated={animated}
+          transactionLabel={t('common.transactions', { count: item.transactionCount })}
         />
       ))}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    gap: spacing.sm,
-  },
-  emptyContainer: {
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
-  },
-  emptyText: {
-    ...typography.bodyMedium,
-    color: colors.text.muted,
-  },
-  itemContainer: {
-    paddingVertical: spacing.sm,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  itemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: spacing.md,
-  },
-  colorDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: spacing.sm,
-  },
-  itemName: {
-    ...typography.bodyMedium,
-    fontWeight: '500',
-    color: colors.text.primary,
-    flex: 1,
-  },
-  itemRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  itemValue: {
-    ...typography.bodyMedium,
-    fontWeight: '600',
-    color: colors.text.primary,
-  },
-  itemPercentage: {
-    ...typography.caption,
-    color: colors.text.muted,
-    minWidth: 45,
-    textAlign: 'right',
-  },
-  barContainer: {
-    marginBottom: spacing.xs,
-  },
-  barBackground: {
-    height: BAR_HEIGHT,
-    backgroundColor: colors.background.tertiary,
-    borderRadius: BAR_HEIGHT / 2,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: BAR_HEIGHT / 2,
-  },
-  transactionCount: {
-    ...typography.caption,
-    color: colors.text.muted,
-    fontSize: 11,
-  },
-});

@@ -1,58 +1,18 @@
-import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback } from 'react';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '@/styles';
+import { useTranslation } from '@/hooks';
+import { colors } from '@/styles';
 
 import { GlassCard } from '../glass';
-import type { ChartDataPoint } from './SpendingBarChart';
+import { usePeriodToggle, useTrendMetrics } from './hooks';
 import { SpendingBarChart } from './SpendingBarChart';
+import { spendingTrendCardStyles as styles } from './styles';
 import { TrendSummary } from './TrendSummary';
-
-type PeriodOption = 6 | 12;
-
-interface SpendingTrendCardProps {
-  title?: string;
-  data: ChartDataPoint[];
-  isLoading?: boolean;
-  error?: string | null;
-  barColor?: string;
-  onBarPress?: (item: ChartDataPoint, index: number) => void;
-  onPeriodChange?: (months: PeriodOption) => void;
-  initialPeriod?: PeriodOption;
-  showTopLabels?: boolean;
-  showAverage?: boolean;
-  chartHeight?: number;
-}
-
-function calculateTrendMetrics(data: ChartDataPoint[]): {
-  average: number;
-  changePercentage: number | null;
-} {
-  if (data.length === 0) {
-    return { average: 0, changePercentage: null };
-  }
-
-  const values = data.map((d) => d.value);
-  const average = values.reduce((sum, v) => sum + v, 0) / values.length;
-
-  if (data.length < 2) {
-    return { average, changePercentage: null };
-  }
-
-  const midpoint = Math.floor(data.length / 2);
-  const recentValues = values.slice(midpoint);
-  const olderValues = values.slice(0, midpoint);
-
-  const recentAvg = recentValues.reduce((sum, v) => sum + v, 0) / recentValues.length;
-  const olderAvg = olderValues.reduce((sum, v) => sum + v, 0) / olderValues.length;
-
-  const changePercentage = olderAvg > 0 ? ((recentAvg - olderAvg) / olderAvg) * 100 : null;
-
-  return { average, changePercentage };
-}
+import type { PeriodOption, SpendingTrendCardProps } from './types';
 
 export function SpendingTrendCard({
-  title = 'Spending Trend',
+  title,
   data,
   isLoading = false,
   error = null,
@@ -64,17 +24,11 @@ export function SpendingTrendCard({
   showAverage = false,
   chartHeight,
 }: SpendingTrendCardProps) {
-  const [selectedPeriod, setSelectedPeriod] = useState<PeriodOption>(initialPeriod);
+  const { t } = useTranslation();
+  const { selectedPeriod, handlePeriodChange } = usePeriodToggle(initialPeriod, onPeriodChange);
+  const { average, changePercentage } = useTrendMetrics(data);
 
-  const handlePeriodChange = useCallback(
-    (period: PeriodOption) => {
-      setSelectedPeriod(period);
-      onPeriodChange?.(period);
-    },
-    [onPeriodChange]
-  );
-
-  const { average, changePercentage } = useMemo(() => calculateTrendMetrics(data), [data]);
+  const displayTitle = title ?? t('insights.spendingTrend');
 
   const renderPeriodToggle = useCallback(() => {
     const periods: PeriodOption[] = [6, 12];
@@ -119,7 +73,7 @@ export function SpendingTrendCard({
     if (data.length === 0) {
       return (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No historical data available</Text>
+          <Text style={styles.emptyText}>{t('analytics.trend.noHistoricalData')}</Text>
         </View>
       );
     }
@@ -140,6 +94,7 @@ export function SpendingTrendCard({
       </>
     );
   }, [
+    t,
     isLoading,
     error,
     data,
@@ -155,73 +110,10 @@ export function SpendingTrendCard({
   return (
     <GlassCard variant="subtle" padding="md">
       <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title}>{displayTitle}</Text>
         {renderPeriodToggle()}
       </View>
       {renderContent()}
     </GlassCard>
   );
 }
-
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  title: {
-    ...typography.titleSmall,
-    color: colors.text.primary,
-  },
-  periodToggle: {
-    flexDirection: 'row',
-    backgroundColor: colors.background.tertiary,
-    borderRadius: 8,
-    padding: 2,
-  },
-  periodButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-  },
-  periodButtonSelected: {
-    backgroundColor: colors.background.primary,
-  },
-  periodButtonText: {
-    ...typography.caption,
-    color: colors.text.muted,
-    fontWeight: '500',
-  },
-  periodButtonTextSelected: {
-    color: colors.text.primary,
-  },
-  loadingContainer: {
-    height: 200,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorContainer: {
-    height: 200,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  errorText: {
-    ...typography.bodyMedium,
-    color: colors.accent.error,
-    textAlign: 'center',
-  },
-  emptyContainer: {
-    height: 200,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyText: {
-    ...typography.bodyMedium,
-    color: colors.text.muted,
-  },
-  summaryContainer: {
-    marginTop: spacing.md,
-  },
-});

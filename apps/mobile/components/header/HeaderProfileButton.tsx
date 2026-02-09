@@ -1,22 +1,14 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable } from 'react-native';
 
 import { ProfileMenu } from '@/components/profile';
-import { useAuth } from '@/hooks';
-import { colors, spacing } from '@/styles';
+import { colors } from '@/styles';
+
+import { useProfileMenu } from './hooks';
+import { headerProfileButtonStyles as styles } from './styles';
 
 export function HeaderProfileButton() {
-  const [menuVisible, setMenuVisible] = useState(false);
-  const { user } = useAuth();
-
-  const handlePress = () => {
-    setMenuVisible(true);
-  };
-
-  const handleClose = () => {
-    setMenuVisible(false);
-  };
+  const { menuVisible, userEmail, handlePress, handleClose } = useProfileMenu();
 
   return (
     <>
@@ -30,18 +22,8 @@ export function HeaderProfileButton() {
       <ProfileMenu
         visible={menuVisible}
         onClose={handleClose}
-        userEmail={user?.email}
+        userEmail={userEmail}
       />
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  button: {
-    padding: spacing.xs,
-    marginRight: spacing.sm,
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-});

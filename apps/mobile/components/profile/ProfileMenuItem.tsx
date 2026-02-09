@@ -1,19 +1,11 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '@/styles';
+import { colors } from '@/styles';
 
-type IconName = React.ComponentProps<typeof FontAwesome>['name'];
-
-interface ProfileMenuItemProps {
-  icon: IconName;
-  label: string;
-  onPress: () => void;
-  variant?: 'default' | 'danger';
-  showDivider?: boolean;
-  rightElement?: ReactNode;
-}
+import { useMenuItemColors } from './hooks';
+import { profileMenuItemStyles as styles } from './styles';
+import type { ProfileMenuItemProps } from './types';
 
 export function ProfileMenuItem({
   icon,
@@ -23,8 +15,7 @@ export function ProfileMenuItem({
   showDivider = true,
   rightElement,
 }: ProfileMenuItemProps) {
-  const iconColor = variant === 'danger' ? colors.accent.error : colors.text.primary;
-  const textColor = variant === 'danger' ? colors.accent.error : colors.text.primary;
+  const { iconColor, textColor } = useMenuItemColors(variant);
 
   return (
     <Pressable
@@ -44,31 +35,3 @@ export function ProfileMenuItem({
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  withDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.secondary,
-  },
-  pressed: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  iconContainer: {
-    width: 32,
-    marginRight: spacing.md,
-    alignItems: 'center',
-  },
-  label: {
-    ...typography.bodyLarge,
-    flex: 1,
-  },
-  rightElement: {
-    marginRight: spacing.sm,
-  },
-});

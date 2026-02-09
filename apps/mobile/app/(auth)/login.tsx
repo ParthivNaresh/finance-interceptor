@@ -1,19 +1,9 @@
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, View } from 'react-native';
 
-import { authStyles } from '@/features/auth';
+import { AuthButton, AuthFooter, AuthHeader, AuthInput, authStyles } from '@/components/auth';
 import { useAuth, useTranslation } from '@/hooks';
-import { colors } from '@/styles';
 
 export default function LoginScreen() {
   const { t } = useTranslation();
@@ -46,55 +36,41 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={authStyles.content}>
-        <Text style={authStyles.title}>{t('auth.loginTitle')}</Text>
-        <Text style={authStyles.subtitle}>{t('auth.loginSubtitle')}</Text>
+        <AuthHeader
+          title={t('auth.loginTitle')}
+          subtitle={t('auth.loginSubtitle')}
+        />
 
         <View style={authStyles.form}>
-          <TextInput
-            style={authStyles.input}
-            placeholder={t('auth.email')}
-            placeholderTextColor={colors.text.muted}
+          <AuthInput
             value={email}
             onChangeText={setEmail}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            editable={!isLoading}
+            placeholder={t('auth.email')}
+            type="email"
+            disabled={isLoading}
+            autoFocus
           />
 
-          <TextInput
-            style={authStyles.input}
-            placeholder={t('auth.password')}
-            placeholderTextColor={colors.text.muted}
+          <AuthInput
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
-            textContentType="password"
-            editable={!isLoading}
+            placeholder={t('auth.password')}
+            type="password"
+            disabled={isLoading}
           />
 
-          <Pressable
-            style={[authStyles.button, isLoading && authStyles.buttonDisabled]}
+          <AuthButton
             onPress={() => void handleSignIn()}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color={colors.background.primary} />
-            ) : (
-              <Text style={authStyles.buttonText}>{t('auth.login')}</Text>
-            )}
-          </Pressable>
+            title={t('auth.login')}
+            loading={isLoading}
+          />
         </View>
 
-        <View style={authStyles.footer}>
-          <Text style={authStyles.footerText}>{t('auth.noAccount')} </Text>
-          <Link href="/(auth)/register" asChild>
-            <Pressable>
-              <Text style={authStyles.linkText}>{t('auth.register')}</Text>
-            </Pressable>
-          </Link>
-        </View>
+        <AuthFooter
+          message={t('auth.noAccount')}
+          linkText={t('auth.register')}
+          linkHref="/(auth)/register"
+        />
       </View>
     </KeyboardAvoidingView>
   );

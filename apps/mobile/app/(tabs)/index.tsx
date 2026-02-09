@@ -7,15 +7,7 @@ import { GlassButton, GlassCard, LoadingSpinner, MonthlyBalanceCard, Transaction
 import { useAccounts, useCurrentCashFlow, usePlaidLink, useTransactions, useTranslation } from '@/hooks';
 import { colors, spacing, typography } from '@/styles';
 import type { Transaction } from '@/types';
-
-function formatCurrency(amount: number, currency: string = 'USD'): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
+import { formatCurrency } from '@/utils';
 
 export default function HomeScreen() {
   const { t } = useTranslation();

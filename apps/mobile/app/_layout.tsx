@@ -139,6 +139,20 @@ function RootLayoutNav() {
             headerBackTitle: 'Back',
           }}
         />
+        <Stack.Screen
+          name="categories/[name]"
+          options={{
+            title: 'Category',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <Stack.Screen
+          name="merchants/[name]"
+          options={{
+            title: 'Merchant',
+            headerBackTitle: 'Back',
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );

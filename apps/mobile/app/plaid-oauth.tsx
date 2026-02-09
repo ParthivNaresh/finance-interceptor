@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
-import { Text, View } from '@/components/Themed';
+import { Text, View } from '@/components';
 
 export default function PlaidOAuthScreen() {
   const router = useRouter();

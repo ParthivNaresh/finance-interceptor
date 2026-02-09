@@ -1,12 +1,7 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '@/styles';
-
-interface SectionHeaderProps {
-  title: string;
-  actionLabel?: string;
-  onActionPress?: () => void;
-}
+import { sectionHeaderStyles as styles } from './styles';
+import type { SectionHeaderProps } from './types';
 
 export function SectionHeader({ title, actionLabel, onActionPress }: SectionHeaderProps) {
   return (
@@ -20,21 +15,3 @@ export function SectionHeader({ title, actionLabel, onActionPress }: SectionHead
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  title: {
-    ...typography.headlineSmall,
-    color: colors.text.primary,
-  },
-  action: {
-    ...typography.labelMedium,
-    color: colors.accent.primary,
-  },
-});

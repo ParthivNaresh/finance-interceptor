@@ -1,28 +1,16 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { GlassCard } from '@/components/glass';
-import { useTranslation } from '@/hooks';
-import { colors, spacing, typography } from '@/styles';
-import type { Account } from '@/types';
-import { formatSectionTotal, getAccountTypeIcon } from '@/utils';
-import type { GroupedAccounts } from '@/utils';
+import { colors } from '@/styles';
 
 import { AccountRow } from './AccountRow';
-
-interface AccountSectionProps {
-  group: GroupedAccounts;
-  onAccountPress?: (account: Account) => void;
-}
+import { useAccountSectionDisplay } from './hooks';
+import { accountSectionStyles as styles } from './styles';
+import type { AccountSectionProps } from './types';
 
 export function AccountSection({ group, onAccountPress }: AccountSectionProps) {
-  const { t } = useTranslation();
-  const { type, accounts, total } = group;
-
-  const typeLabel = t(`accountTypes.${type}` as const);
-  const iconName = getAccountTypeIcon(type);
-  const formattedTotal = formatSectionTotal(total);
-  const isNegativeTotal = total < 0;
+  const { typeLabel, iconName, formattedTotal, isNegativeTotal } = useAccountSectionDisplay(group);
 
   return (
     <View style={styles.container}>
@@ -37,53 +25,15 @@ export function AccountSection({ group, onAccountPress }: AccountSectionProps) {
       </View>
 
       <GlassCard padding="none">
-        {accounts.map((account, index) => (
+        {group.accounts.map((account, index) => (
           <AccountRow
             key={account.id}
             account={account}
             onPress={onAccountPress}
-            isLast={index === accounts.length - 1}
+            isLast={index === group.accounts.length - 1}
           />
         ))}
       </GlassCard>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    marginBottom: spacing.lg,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.xs,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(45, 212, 191, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: spacing.sm,
-  },
-  typeLabel: {
-    ...typography.titleMedium,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  total: {
-    ...typography.titleMedium,
-    fontWeight: '600',
-  },
-  negativeTotal: {
-    color: colors.accent.error,
-  },
-});
