@@ -19,7 +19,6 @@ from models.analytics import (
 )
 from models.enums import ComputationStatus, CreepSeverity, PeriodType, SpendingCategory
 from services.analytics.period_calculator import (
-    get_current_period_start,
     get_period_bounds,
     get_previous_period_start,
 )
@@ -30,6 +29,7 @@ if TYPE_CHECKING:
     from repositories.category_spending import CategorySpendingRepository
     from repositories.lifestyle_baseline import LifestyleBaselineRepository
     from repositories.lifestyle_creep_score import LifestyleCreepScoreRepository
+    from repositories.spending_period import SpendingPeriodRepository
 
 
 CREEP_SCORE_SCALE_FACTOR = Decimal("10")
@@ -60,11 +60,13 @@ class CreepScorer:
         baseline_repo: LifestyleBaselineRepository,
         creep_score_repo: LifestyleCreepScoreRepository,
         cash_flow_repo: CashFlowMetricsRepository,
+        spending_period_repo: "SpendingPeriodRepository",
     ) -> None:
         self._category_spending_repo = category_spending_repo
         self._baseline_repo = baseline_repo
         self._creep_score_repo = creep_score_repo
         self._cash_flow_repo = cash_flow_repo
+        self._spending_period_repo = spending_period_repo
 
     def compute_creep_for_user(
         self,
@@ -89,7 +91,7 @@ class CreepScorer:
 
             baseline_map = self._build_baseline_map(baselines)
 
-            periods = self._get_periods_to_compute(periods_to_compute)
+            periods = self._get_periods_to_compute(user_id, periods_to_compute)
 
             totals = CreepComputationTotals()
             totals.categories_analyzed = len(baseline_map)
@@ -180,7 +182,8 @@ class CreepScorer:
         overall_creep_percentage = self._calculate_overall_creep_percentage(
             total_baseline, total_current
         )
-        overall_severity = CreepSeverity.from_percentage(float(overall_creep_percentage))
+
+        overall_severity = self._calculate_overall_severity(category_summaries)
 
         discretionary_ratio = self._calculate_discretionary_ratio(
             total_current, income_for_period
@@ -259,11 +262,14 @@ class CreepScorer:
         if target_amount == 0:
             return None
 
-        today = date.today()
-        period_start = get_current_period_start(PeriodType.MONTHLY)
+        period_start = self._get_latest_period_start_with_transactions(user_id)
+        if period_start is None:
+            return None
+
+        reference = date.today()
         _, period_end = get_period_bounds(period_start, PeriodType.MONTHLY)
 
-        days_into_period = (today - period_start).days + 1
+        days_into_period = (reference - period_start).days + 1
         total_days_in_period = calendar.monthrange(period_start.year, period_start.month)[1]
 
         current_discretionary = self._get_current_discretionary_spend(
@@ -299,6 +305,9 @@ class CreepScorer:
                     stability_score = 0
                 else:
                     stability_score = max(0, round(100 - creep_pct))
+
+                if creep_summary.overall_severity in (CreepSeverity.MEDIUM, CreepSeverity.HIGH):
+                    stability_score = min(stability_score, 85)
 
                 overall_severity = creep_summary.overall_severity
 
@@ -426,15 +435,36 @@ class CreepScorer:
             for b in baselines
         }
 
-    def _get_periods_to_compute(self, count: int) -> list[date]:
-        periods: list[date] = []
-        current = get_current_period_start(PeriodType.MONTHLY)
+    def _get_periods_to_compute(self, user_id: UUID, count: int) -> list[date]:
+        current = self._get_latest_period_start_with_transactions(user_id)
+        if current is None:
+            return []
 
+        periods: list[date] = []
         for _ in range(count):
             periods.append(current)
             current = get_previous_period_start(current, PeriodType.MONTHLY)
 
         return periods
+
+    def _get_latest_period_start_with_transactions(self, user_id: UUID) -> date | None:
+        periods = self._spending_period_repo.get_periods_for_user(
+            user_id=user_id,
+            period_type=PeriodType.MONTHLY,
+            limit=24,
+        )
+
+        for period in periods:
+            period_start = date.fromisoformat(str(period["period_start"]))
+            current_spending = self._category_spending_repo.get_by_user_and_period(
+                user_id=user_id,
+                period_type=PeriodType.MONTHLY,
+                period_start=period_start,
+            )
+            if current_spending:
+                return period_start
+
+        return None
 
     def _calculate_percentage_change(
         self,
@@ -466,6 +496,20 @@ class CreepScorer:
 
         change = ((total_current - total_baseline) / total_baseline) * 100
         return change.quantize(Decimal("0.01"))
+
+    def _calculate_overall_severity(
+        self,
+        category_summaries: list[CategoryCreepSummary],
+    ) -> CreepSeverity:
+        positive = [c for c in category_summaries if c.percentage_change > 0]
+        if not positive:
+            return CreepSeverity.NONE
+
+        positive.sort(key=lambda c: c.percentage_change, reverse=True)
+        top = positive[:2]
+
+        avg_change = sum((c.percentage_change for c in top), Decimal("0")) / Decimal(len(top))
+        return CreepSeverity.from_percentage(float(avg_change))
 
     def _calculate_discretionary_ratio(
         self,
@@ -507,11 +551,14 @@ class CreepScorerContainer:
             from repositories.lifestyle_baseline import get_lifestyle_baseline_repository
             from repositories.lifestyle_creep_score import get_lifestyle_creep_score_repository
 
+            from repositories.spending_period import get_spending_period_repository
+
             cls._instance = CreepScorer(
                 category_spending_repo=get_category_spending_repository(),
                 baseline_repo=get_lifestyle_baseline_repository(),
                 creep_score_repo=get_lifestyle_creep_score_repository(),
                 cash_flow_repo=get_cash_flow_metrics_repository(),
+                spending_period_repo=get_spending_period_repository(),
             )
         return cls._instance
 
