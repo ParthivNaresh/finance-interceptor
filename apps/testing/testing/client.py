@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from dotenv import load_dotenv
 from supabase import Client, create_client
@@ -182,4 +182,5 @@ def is_test_email(email: str) -> bool:
 
 def generate_test_email(identifier: str) -> str:
     safe_identifier = identifier.replace("@", "_").replace(".", "_")
-    return f"{TEST_EMAIL_PREFIX}{safe_identifier}{TEST_EMAIL_DOMAIN}"
+    unique_suffix = uuid4().hex[:8]
+    return f"{TEST_EMAIL_PREFIX}{safe_identifier}_{unique_suffix}{TEST_EMAIL_DOMAIN}"
