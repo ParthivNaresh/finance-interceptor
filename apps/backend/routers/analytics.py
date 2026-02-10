@@ -79,12 +79,16 @@ from services.analytics.period_calculator import (
     get_period_bounds,
     get_previous_period_start,
 )
+from services.cache.analytics_cache import AnalyticsCache, get_analytics_cache
+from services.cache.invalidation import CacheInvalidator, get_cache_invalidator
 
 router = APIRouter()
 limiter = get_limiter()
 limits = get_rate_limits()
 
 CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
+AnalyticsCacheDep = Annotated[AnalyticsCache, Depends(get_analytics_cache)]
+CacheInvalidatorDep = Annotated[CacheInvalidator, Depends(get_cache_invalidator)]
 SpendingPeriodRepoDep = Annotated[SpendingPeriodRepository, Depends(get_spending_period_repository)]
 CategorySpendingRepoDep = Annotated[
     CategorySpendingRepository, Depends(get_category_spending_repository)
@@ -121,9 +125,14 @@ async def get_spending_summaries(
     request: Request,
     current_user: CurrentUserDep,
     spending_period_repo: SpendingPeriodRepoDep,
+    analytics_cache: AnalyticsCacheDep,
     period_type: PeriodType = Query(default=PeriodType.MONTHLY, description="Period granularity"),
     periods: int = Query(default=6, ge=1, le=24, description="Number of periods to return"),
 ) -> SpendingSummaryListResponse:
+    cached = analytics_cache.get_spending_list(current_user.id, period_type.value, periods)
+    if cached is not None:
+        return cached
+
     periods_data = spending_period_repo.get_periods_for_user(
         user_id=current_user.id,
         period_type=period_type,
@@ -155,10 +164,12 @@ async def get_spending_summaries(
             )
         )
 
-    return SpendingSummaryListResponse(
+    response = SpendingSummaryListResponse(
         periods=result,
         total_periods=len(result),
     )
+    analytics_cache.set_spending_list(current_user.id, period_type.value, periods, response)
+    return response
 
 
 @router.get(
@@ -171,8 +182,13 @@ async def get_current_spending(
     current_user: CurrentUserDep,
     spending_period_repo: SpendingPeriodRepoDep,
     category_spending_repo: CategorySpendingRepoDep,
+    analytics_cache: AnalyticsCacheDep,
     period_type: PeriodType = Query(default=PeriodType.MONTHLY, description="Period granularity"),
 ) -> SpendingSummaryResponse:
+    cached = analytics_cache.get_current_spending(current_user.id, period_type.value)
+    if cached is not None:
+        return cached
+
     current_period_start = get_current_period_start(period_type)
     _, period_end = get_period_bounds(current_period_start, period_type)
 
@@ -218,7 +234,7 @@ async def get_current_spending(
     rolling_3mo = spending_period_repo.get_rolling_average(current_user.id, period_type, 3)
     rolling_6mo = spending_period_repo.get_rolling_average(current_user.id, period_type, 6)
 
-    return SpendingSummaryResponse(
+    response = SpendingSummaryResponse(
         period_type=period_type,
         period_start=current_period_start,
         period_end=period_end,
@@ -231,6 +247,8 @@ async def get_current_spending(
         rolling_average_3mo=rolling_3mo,
         rolling_average_6mo=rolling_6mo,
     )
+    analytics_cache.set_current_spending(current_user.id, period_type.value, response)
+    return response
 
 
 @router.get(
@@ -243,6 +261,7 @@ async def get_category_breakdown(
     current_user: CurrentUserDep,
     spending_period_repo: SpendingPeriodRepoDep,
     category_spending_repo: CategorySpendingRepoDep,
+    analytics_cache: AnalyticsCacheDep,
     period_start: date | None = Query(
         default=None, description="Period start date (defaults to current)"
     ),
@@ -250,6 +269,12 @@ async def get_category_breakdown(
 ) -> CategoryBreakdownResponse:
     if period_start is None:
         period_start = get_current_period_start(period_type)
+
+    cached = analytics_cache.get_category_breakdown(
+        current_user.id, period_type.value, period_start
+    )
+    if cached is not None:
+        return cached
 
     period_start_bound, period_end = get_period_bounds(period_start, period_type)
 
@@ -270,13 +295,17 @@ async def get_category_breakdown(
     )
     category_summaries = _build_category_summaries(categories, total_spending)
 
-    return CategoryBreakdownResponse(
+    response = CategoryBreakdownResponse(
         period_type=period_type,
         period_start=period_start_bound,
         period_end=period_end,
         total_spending=total_spending,
         categories=category_summaries,
     )
+    analytics_cache.set_category_breakdown(
+        current_user.id, period_type.value, period_start, response
+    )
+    return response
 
 
 @router.get(
@@ -289,6 +318,7 @@ async def get_merchant_breakdown(
     current_user: CurrentUserDep,
     spending_period_repo: SpendingPeriodRepoDep,
     merchant_spending_repo: MerchantSpendingRepoDep,
+    analytics_cache: AnalyticsCacheDep,
     period_start: date | None = Query(
         default=None, description="Period start date (defaults to current)"
     ),
@@ -297,6 +327,12 @@ async def get_merchant_breakdown(
 ) -> MerchantBreakdownResponse:
     if period_start is None:
         period_start = get_current_period_start(period_type)
+
+    cached = analytics_cache.get_merchant_breakdown(
+        current_user.id, period_type.value, period_start, limit
+    )
+    if cached is not None:
+        return cached
 
     period_start_bound, period_end = get_period_bounds(period_start, period_type)
 
@@ -318,13 +354,17 @@ async def get_merchant_breakdown(
     )
     merchant_summaries = _build_merchant_summaries(merchants, total_spending)
 
-    return MerchantBreakdownResponse(
+    response = MerchantBreakdownResponse(
         period_type=period_type,
         period_start=period_start_bound,
         period_end=period_end,
         total_spending=total_spending,
         merchants=merchant_summaries,
     )
+    analytics_cache.set_merchant_breakdown(
+        current_user.id, period_type.value, period_start, limit, response
+    )
+    return response
 
 
 @router.get(
@@ -771,12 +811,15 @@ async def trigger_computation(
     request: Request,
     current_user: CurrentUserDep,
     computation_manager: ComputationManagerDep,
+    cache_invalidator: CacheInvalidatorDep,
     force_full: bool = Query(default=False, description="Force full recomputation"),
 ) -> ComputationResultResponse:
     result = computation_manager.compute_for_user(
         user_id=current_user.id,
         force_full_recompute=force_full,
     )
+
+    cache_invalidator.on_analytics_computation(current_user.id)
 
     return ComputationResultResponse(
         status=result.status,
@@ -798,6 +841,7 @@ async def trigger_computation(
 async def get_merchant_stats(
     current_user: CurrentUserDep,
     merchant_stats_repo: MerchantStatsRepoDep,
+    analytics_cache: AnalyticsCacheDep,
     sort_by: Literal["spend", "frequency", "recent"] = Query(
         default="spend",
         description="Sort by: spend, frequency, or recent",
@@ -805,6 +849,10 @@ async def get_merchant_stats(
     limit: int = Query(default=50, ge=1, le=200, description="Number of merchants to return"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ) -> MerchantStatsListResponse:
+    cached = analytics_cache.get_merchant_stats_list(current_user.id, sort_by, limit, offset)
+    if cached is not None:
+        return cached
+
     sort_field_map: dict[str, SortField] = {
         "spend": "total_lifetime_spend",
         "frequency": "total_transaction_count",
@@ -822,10 +870,12 @@ async def get_merchant_stats(
 
     total = merchant_stats_repo.count_for_user(current_user.id)
 
-    return MerchantStatsListResponse(
+    response = MerchantStatsListResponse(
         merchants=[_to_merchant_stats_response(m) for m in merchants],
         total=total,
     )
+    analytics_cache.set_merchant_stats_list(current_user.id, sort_by, limit, offset, response)
+    return response
 
 
 @router.get(
@@ -837,21 +887,28 @@ async def get_merchant_stats(
 async def get_top_merchants(
     current_user: CurrentUserDep,
     merchant_stats_repo: MerchantStatsRepoDep,
+    analytics_cache: AnalyticsCacheDep,
     sort_by: Literal["spend", "frequency"] = Query(
         default="spend",
         description="Sort by: spend (lifetime) or frequency (transaction count)",
     ),
     limit: int = Query(default=10, ge=1, le=50, description="Number of merchants to return"),
 ) -> MerchantStatsListResponse:
+    cached = analytics_cache.get_merchant_stats_top(current_user.id, sort_by, limit)
+    if cached is not None:
+        return cached
+
     if sort_by == "spend":
         merchants = merchant_stats_repo.get_top_by_spend(current_user.id, limit)
     else:
         merchants = merchant_stats_repo.get_top_by_frequency(current_user.id, limit)
 
-    return MerchantStatsListResponse(
+    response = MerchantStatsListResponse(
         merchants=[_to_merchant_stats_response(m) for m in merchants],
         total=len(merchants),
     )
+    analytics_cache.set_merchant_stats_top(current_user.id, sort_by, limit, response)
+    return response
 
 
 @router.get(
@@ -863,14 +920,21 @@ async def get_top_merchants(
 async def get_recurring_merchants(
     current_user: CurrentUserDep,
     merchant_stats_repo: MerchantStatsRepoDep,
+    analytics_cache: AnalyticsCacheDep,
     limit: int = Query(default=50, ge=1, le=100, description="Number of merchants to return"),
 ) -> MerchantStatsListResponse:
+    cached = analytics_cache.get_recurring_merchants(current_user.id, limit)
+    if cached is not None:
+        return cached
+
     merchants = merchant_stats_repo.get_recurring_merchants(current_user.id, limit)
 
-    return MerchantStatsListResponse(
+    response = MerchantStatsListResponse(
         merchants=[_to_merchant_stats_response(m) for m in merchants],
         total=len(merchants),
     )
+    analytics_cache.set_recurring_merchants(current_user.id, limit, response)
+    return response
 
 
 @router.get(
@@ -906,12 +970,15 @@ async def trigger_merchant_stats_computation(
     request: Request,
     current_user: CurrentUserDep,
     merchant_stats_aggregator: MerchantStatsAggregatorDep,
+    cache_invalidator: CacheInvalidatorDep,
     force_full: bool = Query(default=False, description="Force full recomputation"),
 ) -> MerchantStatsComputationResult:
-    return merchant_stats_aggregator.compute_for_user(
+    result = merchant_stats_aggregator.compute_for_user(
         user_id=current_user.id,
         full_recompute=force_full,
     )
+    cache_invalidator.on_analytics_computation(current_user.id)
+    return result
 
 
 @router.get(
@@ -923,8 +990,13 @@ async def trigger_merchant_stats_computation(
 async def get_cash_flow_metrics(
     current_user: CurrentUserDep,
     cash_flow_repo: CashFlowRepoDep,
+    analytics_cache: AnalyticsCacheDep,
     periods: int = Query(default=12, ge=1, le=24, description="Number of periods to return"),
 ) -> CashFlowMetricsListResponse:
+    cached = analytics_cache.get_cashflow_list(current_user.id, periods)
+    if cached is not None:
+        return cached
+
     periods_data = cash_flow_repo.get_periods_for_user(
         user_id=current_user.id,
         limit=periods,
@@ -932,13 +1004,15 @@ async def get_cash_flow_metrics(
 
     avg_savings_rate = cash_flow_repo.get_average_savings_rate(current_user.id, months=6)
 
-    return CashFlowMetricsListResponse(
+    response = CashFlowMetricsListResponse(
         periods=[_to_cash_flow_response(p) for p in periods_data],
         total_periods=len(periods_data),
         average_savings_rate=Decimal(str(avg_savings_rate))
         if avg_savings_rate is not None
         else None,
     )
+    analytics_cache.set_cashflow_list(current_user.id, periods, response)
+    return response
 
 
 @router.get(
@@ -950,7 +1024,12 @@ async def get_cash_flow_metrics(
 async def get_current_cash_flow(
     current_user: CurrentUserDep,
     cash_flow_repo: CashFlowRepoDep,
+    analytics_cache: AnalyticsCacheDep,
 ) -> CashFlowMetricsResponse:
+    cached = analytics_cache.get_cashflow_current(current_user.id)
+    if cached is not None:
+        return cached
+
     current_period_start = get_current_period_start(PeriodType.MONTHLY)
 
     metrics = cash_flow_repo.get_by_user_and_period(
@@ -964,7 +1043,9 @@ async def get_current_cash_flow(
             detail="Cash flow metrics not found for current period",
         )
 
-    return _to_cash_flow_response(metrics)
+    response = _to_cash_flow_response(metrics)
+    analytics_cache.set_cashflow_current(current_user.id, response)
+    return response
 
 
 @router.get(
@@ -976,8 +1057,13 @@ async def get_current_cash_flow(
 async def get_income_sources(
     current_user: CurrentUserDep,
     income_source_repo: IncomeSourceRepoDep,
+    analytics_cache: AnalyticsCacheDep,
     active_only: bool = Query(default=True, description="Only return active income sources"),
 ) -> IncomeSourceListResponse:
+    cached = analytics_cache.get_income_sources(current_user.id, active_only)
+    if cached is not None:
+        return cached
+
     sources = income_source_repo.get_by_user_id(
         user_id=current_user.id,
         active_only=active_only,
@@ -985,11 +1071,13 @@ async def get_income_sources(
 
     high_confidence = income_source_repo.get_high_confidence(current_user.id)
 
-    return IncomeSourceListResponse(
+    response = IncomeSourceListResponse(
         sources=[_to_income_source_response(s) for s in sources],
         total=len(sources),
         high_confidence_count=len(high_confidence),
     )
+    analytics_cache.set_income_sources(current_user.id, active_only, response)
+    return response
 
 
 @router.post(
@@ -1003,12 +1091,15 @@ async def trigger_cash_flow_computation(
     request: Request,
     current_user: CurrentUserDep,
     cash_flow_aggregator: CashFlowAggregatorDep,
+    cache_invalidator: CacheInvalidatorDep,
     force_full: bool = Query(default=False, description="Force full recomputation"),
 ) -> CashFlowComputationResultResponse:
     result = cash_flow_aggregator.compute_for_user(
         user_id=current_user.id,
         force_full_recompute=force_full,
     )
+
+    cache_invalidator.on_analytics_computation(current_user.id)
 
     return CashFlowComputationResultResponse(
         status=result.status,
@@ -1204,7 +1295,12 @@ MONTHS_REQUIRED_FOR_TARGET = 3
 async def get_pacing_status(
     current_user: CurrentUserDep,
     creep_scorer: CreepScorerDep,
+    analytics_cache: AnalyticsCacheDep,
 ) -> PacingResponse:
+    cached = analytics_cache.get_pacing(current_user.id)
+    if cached is not None:
+        return cached
+
     pacing = creep_scorer.get_pacing_status(current_user.id)
 
     if not pacing:
@@ -1213,6 +1309,7 @@ async def get_pacing_status(
             detail="No spending target established. Need at least 3 months of data.",
         )
 
+    analytics_cache.set_pacing(current_user.id, pacing)
     return pacing
 
 
@@ -1226,7 +1323,12 @@ async def get_target_status(
     current_user: CurrentUserDep,
     baseline_calculator: BaselineCalculatorDep,
     spending_period_repo: SpendingPeriodRepoDep,
+    analytics_cache: AnalyticsCacheDep,
 ) -> TargetStatusResponse:
+    cached = analytics_cache.get_target_status(current_user.id)
+    if cached is not None:
+        return cached
+
     baseline_status = baseline_calculator.get_baseline_status(current_user.id)
 
     if baseline_status.has_baselines:
@@ -1234,7 +1336,7 @@ async def get_target_status(
         if baseline_status.baseline_period_end:
             next_review = baseline_status.baseline_period_end + timedelta(days=365)
 
-        return TargetStatusResponse(
+        response = TargetStatusResponse(
             status=TargetStatusType.ESTABLISHED,
             months_available=baseline_status.months_count,
             months_required=MONTHS_REQUIRED_FOR_TARGET,
@@ -1244,6 +1346,8 @@ async def get_target_status(
             categories_count=baseline_status.categories_count,
             next_review_at=next_review,
         )
+        analytics_cache.set_target_status(current_user.id, response)
+        return response
 
     periods = spending_period_repo.get_periods_for_user(
         user_id=current_user.id,
@@ -1252,7 +1356,7 @@ async def get_target_status(
     )
     months_available = len(periods)
 
-    return TargetStatusResponse(
+    response = TargetStatusResponse(
         status=TargetStatusType.BUILDING,
         months_available=months_available,
         months_required=MONTHS_REQUIRED_FOR_TARGET,
@@ -1262,6 +1366,8 @@ async def get_target_status(
         categories_count=0,
         next_review_at=None,
     )
+    analytics_cache.set_target_status(current_user.id, response)
+    return response
 
 
 @router.get(
@@ -1273,23 +1379,32 @@ async def get_target_status(
 async def get_lifestyle_baselines(
     current_user: CurrentUserDep,
     baseline_repo: LifestyleBaselineRepoDep,
+    analytics_cache: AnalyticsCacheDep,
 ) -> LifestyleBaselineListResponse:
+    cached = analytics_cache.get_baselines(current_user.id)
+    if cached is not None:
+        return cached
+
     baselines = baseline_repo.get_by_user_id(current_user.id)
 
     if not baselines:
-        return LifestyleBaselineListResponse(
+        response = LifestyleBaselineListResponse(
             baselines=[],
             total=0,
             is_locked=False,
         )
+        analytics_cache.set_baselines(current_user.id, response, is_locked=False)
+        return response
 
     is_locked = any(b.get("is_locked", False) for b in baselines)
 
-    return LifestyleBaselineListResponse(
+    response = LifestyleBaselineListResponse(
         baselines=[_to_baseline_response(b) for b in baselines],
         total=len(baselines),
         is_locked=is_locked,
     )
+    analytics_cache.set_baselines(current_user.id, response, is_locked=is_locked)
+    return response
 
 
 @router.post(
@@ -1303,6 +1418,7 @@ async def compute_lifestyle_baselines(
     request: Request,
     current_user: CurrentUserDep,
     baseline_calculator: BaselineCalculatorDep,
+    cache_invalidator: CacheInvalidatorDep,
     force_recompute: bool = Query(
         default=False, description="Force recomputation even if baselines exist"
     ),
@@ -1311,6 +1427,8 @@ async def compute_lifestyle_baselines(
         user_id=current_user.id,
         force_recompute=force_recompute,
     )
+
+    cache_invalidator.on_baseline_change(current_user.id)
 
     return LifestyleCreepComputationResult(
         status=result.status,
@@ -1333,8 +1451,10 @@ async def lock_lifestyle_baselines(
     request: Request,
     current_user: CurrentUserDep,
     baseline_calculator: BaselineCalculatorDep,
+    cache_invalidator: CacheInvalidatorDep,
 ) -> dict[str, int | str]:
     locked_count = baseline_calculator.lock_baselines(current_user.id)
+    cache_invalidator.on_baseline_change(current_user.id)
     return {"locked_count": locked_count, "message": f"Locked {locked_count} baselines"}
 
 
@@ -1349,8 +1469,10 @@ async def unlock_lifestyle_baselines(
     request: Request,
     current_user: CurrentUserDep,
     baseline_calculator: BaselineCalculatorDep,
+    cache_invalidator: CacheInvalidatorDep,
 ) -> dict[str, int | str]:
     unlocked_count = baseline_calculator.unlock_baselines(current_user.id)
+    cache_invalidator.on_baseline_change(current_user.id)
     return {"unlocked_count": unlocked_count, "message": f"Unlocked {unlocked_count} baselines"}
 
 
@@ -1365,8 +1487,11 @@ async def reset_lifestyle_baselines(
     request: Request,
     current_user: CurrentUserDep,
     baseline_calculator: BaselineCalculatorDep,
+    cache_invalidator: CacheInvalidatorDep,
 ) -> LifestyleCreepComputationResult:
     result = baseline_calculator.reset_baselines(current_user.id)
+
+    cache_invalidator.on_baseline_change(current_user.id)
 
     return LifestyleCreepComputationResult(
         status=result.status,
@@ -1387,12 +1512,17 @@ async def reset_lifestyle_baselines(
 async def get_lifestyle_creep_summary(
     current_user: CurrentUserDep,
     creep_scorer: CreepScorerDep,
+    analytics_cache: AnalyticsCacheDep,
     period_start: date | None = Query(
         default=None, description="Period start date (defaults to current month)"
     ),
 ) -> LifestyleCreepSummary:
     if period_start is None:
         period_start = get_current_period_start(PeriodType.MONTHLY)
+
+    cached = analytics_cache.get_creep_summary(current_user.id, period_start)
+    if cached is not None:
+        return cached
 
     summary = creep_scorer.get_creep_summary(current_user.id, period_start)
 
@@ -1402,6 +1532,7 @@ async def get_lifestyle_creep_summary(
             detail="Lifestyle creep data not found for this period. Run computation first.",
         )
 
+    analytics_cache.set_creep_summary(current_user.id, period_start, summary)
     return summary
 
 
@@ -1414,14 +1545,21 @@ async def get_lifestyle_creep_summary(
 async def get_lifestyle_creep_history(
     current_user: CurrentUserDep,
     creep_scorer: CreepScorerDep,
+    analytics_cache: AnalyticsCacheDep,
     periods: int = Query(default=12, ge=1, le=24, description="Number of periods to return"),
 ) -> LifestyleCreepListResponse:
+    cached = analytics_cache.get_creep_history(current_user.id, periods)
+    if cached is not None:
+        return cached
+
     summaries = creep_scorer.get_creep_history(current_user.id, periods)
 
-    return LifestyleCreepListResponse(
+    response = LifestyleCreepListResponse(
         periods=summaries,
         total_periods=len(summaries),
     )
+    analytics_cache.set_creep_history(current_user.id, periods, response)
+    return response
 
 
 @router.get(
@@ -1454,16 +1592,19 @@ async def compute_lifestyle_creep(
     request: Request,
     current_user: CurrentUserDep,
     creep_scorer: CreepScorerDep,
+    cache_invalidator: CacheInvalidatorDep,
     periods: int = Query(default=6, ge=1, le=12, description="Number of periods to compute"),
     force_recompute: bool = Query(
         default=False, description="Force recomputation of existing scores"
     ),
 ) -> LifestyleCreepComputationResult:
-    return creep_scorer.compute_creep_for_user(
+    result = creep_scorer.compute_creep_for_user(
         user_id=current_user.id,
         periods_to_compute=periods,
         force_recompute=force_recompute,
     )
+    cache_invalidator.on_creep_computation(current_user.id)
+    return result
 
 
 @router.post(
@@ -1477,8 +1618,11 @@ async def compute_current_lifestyle_creep(
     request: Request,
     current_user: CurrentUserDep,
     creep_scorer: CreepScorerDep,
+    cache_invalidator: CacheInvalidatorDep,
 ) -> LifestyleCreepComputationResult:
-    return creep_scorer.compute_current_period(current_user.id)
+    result = creep_scorer.compute_current_period(current_user.id)
+    cache_invalidator.on_creep_computation(current_user.id)
+    return result
 
 
 def _to_baseline_response(baseline: dict[str, Any]) -> LifestyleBaselineResponse:

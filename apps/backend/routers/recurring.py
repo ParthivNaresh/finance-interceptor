@@ -20,6 +20,8 @@ from models.recurring import (
 )
 from repositories.recurring_stream import RecurringStreamRepository, get_recurring_stream_repository
 from repositories.transaction import TransactionRepository, get_transaction_repository
+from services.cache.invalidation import CacheInvalidator, get_cache_invalidator
+from services.cache.recurring_cache import RecurringCache, get_recurring_cache
 from services.recurring import RecurringSyncService, get_recurring_sync_service
 
 router = APIRouter()
@@ -32,6 +34,8 @@ RecurringStreamRepoDep = Annotated[
 ]
 TransactionRepoDep = Annotated[TransactionRepository, Depends(get_transaction_repository)]
 RecurringSyncServiceDep = Annotated[RecurringSyncService, Depends(get_recurring_sync_service)]
+RecurringCacheDep = Annotated[RecurringCache, Depends(get_recurring_cache)]
+CacheInvalidatorDep = Annotated[CacheInvalidator, Depends(get_cache_invalidator)]
 
 
 def _to_stream_response(stream: dict[str, Any]) -> RecurringStreamResponse:
@@ -131,8 +135,13 @@ async def list_recurring(
     request: Request,
     current_user: CurrentUserDep,
     recurring_repo: RecurringStreamRepoDep,
+    recurring_cache: RecurringCacheDep,
     active_only: bool = Query(default=True, description="Only return active streams"),
 ) -> RecurringStreamListResponse:
+    cached = recurring_cache.get_recurring_list(current_user.id, active_only)
+    if cached is not None:
+        return cached
+
     if active_only:
         streams = recurring_repo.get_active_by_user_id(current_user.id)
     else:
@@ -160,13 +169,15 @@ async def list_recurring(
         if last_synced is None or stream_synced > last_synced:
             last_synced = stream_synced
 
-    return RecurringStreamListResponse(
+    list_response = RecurringStreamListResponse(
         inflow_streams=inflow_streams,
         outflow_streams=outflow_streams,
         total_monthly_inflow=total_monthly_inflow,
         total_monthly_outflow=total_monthly_outflow,
         last_synced_at=last_synced,
     )
+    recurring_cache.set_recurring_list(current_user.id, active_only, list_response)
+    return list_response
 
 
 @router.get(
@@ -180,8 +191,13 @@ async def get_upcoming_bills(
     request: Request,
     current_user: CurrentUserDep,
     recurring_repo: RecurringStreamRepoDep,
+    recurring_cache: RecurringCacheDep,
     days: int = Query(default=30, ge=1, le=90, description="Number of days to look ahead"),
 ) -> UpcomingBillsListResponse:
+    cached = recurring_cache.get_upcoming_bills(current_user.id, days)
+    if cached is not None:
+        return cached
+
     streams = recurring_repo.get_upcoming(current_user.id, days_ahead=days)
     today = date.today()
 
@@ -205,11 +221,13 @@ async def get_upcoming_bills(
         )
         total_amount += amount
 
-    return UpcomingBillsListResponse(
+    response = UpcomingBillsListResponse(
         bills=bills,
         total_amount=total_amount,
         period_days=days,
     )
+    recurring_cache.set_upcoming_bills(current_user.id, days, response)
+    return response
 
 
 @router.get(
@@ -294,8 +312,11 @@ async def sync_recurring(
     request: Request,
     current_user: CurrentUserDep,
     sync_service: RecurringSyncServiceDep,
+    cache_invalidator: CacheInvalidatorDep,
 ) -> RecurringSyncResult:
     results = sync_service.sync_all_for_user(current_user.id)
+
+    cache_invalidator.on_recurring_sync(current_user.id)
 
     total = RecurringSyncResult(
         streams_synced=0,

@@ -137,6 +137,55 @@ class Settings(BaseSettings):
         description="Default rate limit for authenticated endpoints (user-based)",
     )
 
+    cache_enabled: bool = Field(
+        default=True,
+        description="Enable Redis caching layer",
+    )
+    cache_auth_ttl_seconds: int = Field(
+        default=300,
+        description="TTL for auth token cache (5 min)",
+    )
+    cache_analytics_current_ttl_seconds: int = Field(
+        default=120,
+        description="TTL for current period analytics (2 min)",
+    )
+    cache_analytics_historical_ttl_seconds: int = Field(
+        default=3600,
+        description="TTL for historical analytics (1 hour)",
+    )
+    cache_analytics_finalized_ttl_seconds: int = Field(
+        default=86400,
+        description="TTL for finalized/immutable analytics (24 hours)",
+    )
+    cache_merchant_stats_ttl_seconds: int = Field(
+        default=600,
+        description="TTL for merchant stats (10 min)",
+    )
+    cache_pacing_ttl_seconds: int = Field(
+        default=60,
+        description="TTL for pacing data (1 min)",
+    )
+    cache_baselines_ttl_seconds: int = Field(
+        default=3600,
+        description="TTL for unlocked baselines (1 hour)",
+    )
+    cache_baselines_locked_ttl_seconds: int = Field(
+        default=86400,
+        description="TTL for locked baselines (24 hours)",
+    )
+    cache_creep_ttl_seconds: int = Field(
+        default=300,
+        description="TTL for creep summary/history (5 min)",
+    )
+    cache_accounts_ttl_seconds: int = Field(
+        default=600,
+        description="TTL for accounts list (10 min)",
+    )
+    cache_recurring_ttl_seconds: int = Field(
+        default=600,
+        description="TTL for recurring streams (10 min)",
+    )
+
     def get_rate_limit_storage_url(self) -> str:
         return self.rate_limit_storage_url or self.redis_url
 

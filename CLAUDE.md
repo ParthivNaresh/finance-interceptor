@@ -77,11 +77,18 @@ apps/backend/
 ├── services/            # Business logic
 │   ├── plaid.py         # Plaid API wrapper
 │   ├── database.py      # Supabase client
-│   ├── auth.py          # Token validation
+│   ├── auth.py          # Token validation (with cache-first lookup)
 │   ├── transaction_sync.py
 │   ├── recurring.py
 │   ├── alert_detection.py
 │   ├── webhook.py
+│   ├── cache/           # Redis caching layer
+│   │   ├── base.py          # CacheService (generic Redis ops)
+│   │   ├── auth_cache.py    # Auth token cache
+│   │   ├── analytics_cache.py # Analytics response cache
+│   │   ├── account_cache.py   # Account data cache
+│   │   ├── recurring_cache.py # Recurring stream cache
+│   │   └── invalidation.py   # CacheInvalidator orchestrator
 │   └── analytics/       # Analytics package
 │       ├── period_calculator.py
 │       ├── transfer_detector.py
@@ -136,7 +143,8 @@ async def endpoint(user: CurrentUser):
 
 **Auth Flow:**
 - JWT token in `Authorization: Bearer <token>` header
-- Validated via Supabase `auth.get_user(token)`
+- Cache-first: checks `AuthCache` (Redis, SHA-256 hashed key, 5 min TTL)
+- On cache miss: validates via Supabase `auth.get_user(token)`, stores result in cache
 - Returns `AuthenticatedUser` with `id` and `email`
 
 **Logging Pattern:**
@@ -243,10 +251,10 @@ result = await task_queue.enqueue_analytics_computation(user_id)
 ```
 
 ### Worker Contexts
-- `WorkerContext` - Analytics services (spending, merchant, cash flow, etc.)
-- `WebhookWorkerContext` - Webhook processing services (transaction sync, recurring sync, etc.)
+- `WorkerContext` - Analytics services (spending, merchant, cash flow, etc.) + `CacheInvalidator`
+- `WebhookWorkerContext` - Webhook processing services (transaction sync, recurring sync, etc.) + `CacheInvalidator`
 
-Both are initialized in `workers/lifecycle.py` and passed to tasks via the ARQ context.
+Both are initialized in `workers/lifecycle.py` and passed to tasks via the ARQ context. Workers call `CacheInvalidator` methods after sync/compute operations to clear stale cached data.
 
 ### Configuration
 ```env
@@ -256,6 +264,78 @@ TASK_DEBOUNCE_SECONDS=30
 ```
 
 Set `TASK_QUEUE_ENABLED=false` to disable background processing. Webhooks will use FastAPI BackgroundTasks as fallback.
+
+---
+
+## Redis Caching Layer
+
+All API GET endpoints are cached in Redis to reduce Supabase load and latency. Uses the same Redis instance as ARQ and rate limiting.
+
+### Architecture
+```
+Request → Auth middleware → [AuthCache] → Router → [DomainCache] → Repository → Supabase
+                                                       ↑
+                                              Cache miss? Query DB,
+                                              store result in cache
+
+Webhook Worker → Sync Data → [CacheInvalidator] → Delete stale keys
+```
+
+### Cache Domains
+
+| Domain | Key Prefix | TTL | Description |
+|--------|-----------|-----|-------------|
+| Auth | `fi:auth:{sha256}` | 5 min | JWT validation results |
+| Spending | `fi:analytics:{uid}:spending:*` | 2 min | Current period analytics |
+| Merchant Stats | `fi:analytics:{uid}:merchant_stats:*` | 10 min | Lifetime merchant stats |
+| Cash Flow | `fi:analytics:{uid}:cashflow:*` | 2 min | Income/expense metrics |
+| Pacing | `fi:analytics:{uid}:creep:pacing` | 1 min | Real-time pacing |
+| Baselines | `fi:analytics:{uid}:creep:baselines` | 1h / 24h | Unlocked / locked |
+| Creep | `fi:analytics:{uid}:creep:*` | 5 min | Creep summary/history |
+| Accounts | `fi:accounts:{uid}:*` | 10 min | Account listings |
+| Recurring | `fi:recurring:{uid}:*` | 10 min | Recurring streams |
+
+### Invalidation Events
+
+| Event | Trigger | Caches Invalidated |
+|-------|---------|-------------------|
+| Transaction sync | Webhook worker | Spending, merchants, cashflow, creep, accounts |
+| Analytics compute | Worker or POST endpoint | All analytics for user |
+| Recurring sync | Webhook worker | Recurring streams |
+| Baseline change | POST compute/lock/unlock/reset | Creep domain |
+| Plaid item deleted | DELETE endpoint | Everything for user |
+
+### Key Design Decisions
+- **Graceful degradation**: All cache operations wrapped in `try/except RedisError` — endpoints work without Redis
+- **No JWT in keys**: Auth cache uses `SHA-256(token)[:32]` — token never stored as key
+- **SCAN-based deletion**: `delete_pattern()` uses `scan_iter` (not `KEYS`) — production-safe
+- **Key prefix `fi:`**: Avoids collision with ARQ (`arq:`) and rate limiter (`LIMITER`)
+
+### Key Files
+- `services/cache/base.py` - `CacheService` with get/set/delete/delete_pattern
+- `services/cache/auth_cache.py` - Auth token cache
+- `services/cache/analytics_cache.py` - All analytics response caching
+- `services/cache/account_cache.py` - Account data cache
+- `services/cache/recurring_cache.py` - Recurring stream cache
+- `services/cache/invalidation.py` - `CacheInvalidator` orchestrator
+
+### Configuration
+```env
+CACHE_ENABLED=true                          # Master switch
+CACHE_AUTH_TTL_SECONDS=300                  # Auth token (5 min)
+CACHE_ANALYTICS_CURRENT_TTL_SECONDS=120     # Current period (2 min)
+CACHE_ANALYTICS_HISTORICAL_TTL_SECONDS=3600 # Historical (1 hour)
+CACHE_ANALYTICS_FINALIZED_TTL_SECONDS=86400 # Finalized (24 hours)
+CACHE_MERCHANT_STATS_TTL_SECONDS=600        # Merchant stats (10 min)
+CACHE_PACING_TTL_SECONDS=60                 # Pacing (1 min)
+CACHE_BASELINES_TTL_SECONDS=3600            # Unlocked baselines (1 hour)
+CACHE_BASELINES_LOCKED_TTL_SECONDS=86400    # Locked baselines (24 hours)
+CACHE_CREEP_TTL_SECONDS=300                 # Creep summary (5 min)
+CACHE_ACCOUNTS_TTL_SECONDS=600              # Accounts (10 min)
+CACHE_RECURRING_TTL_SECONDS=600             # Recurring (10 min)
+```
+
+Set `CACHE_ENABLED=false` to disable all caching (endpoints hit Supabase directly).
 
 ---
 
@@ -546,6 +626,7 @@ RATE_LIMIT_AUTH=5/minute
 RATE_LIMIT_PLAID=10/minute
 RATE_LIMIT_ANALYTICS_WRITE=5/minute
 RATE_LIMIT_DEFAULT=60/minute
+CACHE_ENABLED=true
 ```
 
 **Mobile (`apps/mobile/.env`):**

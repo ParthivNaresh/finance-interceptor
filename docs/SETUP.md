@@ -602,6 +602,11 @@ pod install --repo-update
 | `PLAID_WEBHOOK_VERIFICATION_ENABLED` | Enable webhook JWT verification | `false` (dev) / `true` (prod) |
 | `WEBHOOK_KEY_CACHE_TTL_SECONDS` | Plaid key cache TTL | `86400` (24 hours) |
 | `WEBHOOK_VERIFICATION_TIMEOUT_SECONDS` | Plaid API timeout | `10.0` |
+| `CACHE_ENABLED` | Enable Redis caching layer | `true` |
+| `CACHE_AUTH_TTL_SECONDS` | Auth token cache TTL | `300` (5 min) |
+| `CACHE_PACING_TTL_SECONDS` | Pacing data cache TTL | `60` (1 min) |
+| `CACHE_ACCOUNTS_TTL_SECONDS` | Account list cache TTL | `600` (10 min) |
+| `CACHE_RECURRING_TTL_SECONDS` | Recurring stream cache TTL | `600` (10 min) |
 
 ### Mobile (`apps/mobile/.env`)
 

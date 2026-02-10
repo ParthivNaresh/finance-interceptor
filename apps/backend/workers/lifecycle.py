@@ -61,6 +61,12 @@ async def startup(ctx: dict[str, Any]) -> None:
     TransferDetectorContainer.get()
     SpendingAggregatorContainer.get()
 
+    from services.cache.base import CacheServiceContainer
+    from services.cache.invalidation import CacheInvalidatorContainer
+
+    CacheServiceContainer.get()
+    cache_invalidator = CacheInvalidatorContainer.get()
+
     spending_manager = SpendingComputationManagerContainer.get()
     merchant_aggregator = MerchantStatsAggregatorContainer.get()
     cash_flow_aggregator = CashFlowAggregatorContainer.get()
@@ -73,6 +79,7 @@ async def startup(ctx: dict[str, Any]) -> None:
         cash_flow_aggregator=cash_flow_aggregator,
         baseline_calculator=baseline_calculator,
         creep_scorer=creep_scorer,
+        cache_invalidator=cache_invalidator,
     )
 
     ctx["worker_context"] = worker_context
@@ -97,6 +104,7 @@ async def startup(ctx: dict[str, Any]) -> None:
         cash_flow_aggregator=cash_flow_aggregator,
         baseline_calculator=baseline_calculator,
         creep_scorer=creep_scorer,
+        cache_invalidator=cache_invalidator,
     )
 
     ctx["webhook_context"] = webhook_context
@@ -106,6 +114,12 @@ async def startup(ctx: dict[str, Any]) -> None:
 
 async def shutdown(_ctx: dict[str, Any]) -> None:
     logger.info("worker.shutdown.started")
+
+    from services.cache.base import CacheServiceContainer
+    from services.cache.invalidation import CacheInvalidatorContainer
+
+    CacheInvalidatorContainer.reset()
+    CacheServiceContainer.reset()
 
     from repositories.account import AccountRepositoryContainer
     from repositories.analytics_log import AnalyticsComputationLogRepositoryContainer

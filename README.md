@@ -15,6 +15,7 @@ A proactive financial monitoring app that detects subscription price increases a
 - 🔔 Subscription price change detection
 - 📝 Structured logging with PII protection
 - ⚡ Background job processing with Redis + ARQ
+- 🚀 Redis caching layer with automatic invalidation
 
 ## Quick Start
 

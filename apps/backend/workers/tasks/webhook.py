@@ -226,6 +226,8 @@ async def _trigger_transaction_sync(
     plaid_item_id = UUID(plaid_item["id"])
     user_id = UUID(plaid_item["user_id"])
 
+    worker_context.cache_invalidator.on_transaction_sync(user_id)
+
     _trigger_recurring_sync_silent(worker_context, plaid_item_id, result, log)
 
     await _trigger_analytics_computation(worker_context, user_id, result, log)
@@ -249,6 +251,8 @@ def _trigger_recurring_sync_only(
         worker_context.recurring_sync_service.sync_for_plaid_item(plaid_item_id)
         result.recurring_synced = True
         log.info("task.webhook.recurring_sync.completed")
+        user_id = UUID(plaid_item["user_id"])
+        worker_context.cache_invalidator.on_recurring_sync(user_id)
     except Exception as e:
         log.exception("task.webhook.recurring_sync.failed")
         result.partial_failure = True
@@ -294,6 +298,7 @@ async def _trigger_analytics_computation(
             analytics_log.warning("task.webhook.analytics.enqueue_failed")
 
     _run_analytics_sync(worker_context, user_id, result, analytics_log)
+    worker_context.cache_invalidator.on_analytics_computation(user_id)
 
 
 def _run_analytics_sync(

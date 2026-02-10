@@ -46,6 +46,7 @@ async def compute_analytics_for_user(ctx: dict[str, Any], user_id: str) -> dict[
 
     try:
         result = _execute_analytics(worker_context, user_uuid, log)
+        worker_context.cache_invalidator.on_analytics_computation(user_uuid)
         clear_context()
         return _to_dict(result)
     except AnalyticsTaskError as e:

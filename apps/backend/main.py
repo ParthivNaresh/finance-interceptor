@@ -24,6 +24,7 @@ from repositories.transaction import TransactionRepositoryContainer
 from repositories.webhook_event import WebhookEventRepositoryContainer
 from routers import api_router
 from services.auth import AuthServiceContainer
+from services.cache.base import CacheServiceContainer
 from services.database import DatabaseServiceContainer
 from services.encryption import EncryptionServiceContainer
 from services.plaid import PlaidServiceContainer
@@ -55,6 +56,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         task_queue_enabled=settings.task_queue_enabled,
     )
 
+    CacheServiceContainer.get()
     DatabaseServiceContainer.get()
     AuthServiceContainer.get()
     EncryptionServiceContainer.get()
@@ -76,6 +78,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     logger.info(
         "application.ready",
         webhook_verification_enabled=settings.plaid_webhook_verification_enabled,
+        cache_enabled=settings.cache_enabled,
     )
 
     yield
@@ -84,6 +87,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 
     PlaidWebhookVerifierContainer.reset()
     WebhookKeyCacheContainer.reset()
+    CacheServiceContainer.reset()
     WebhookServiceContainer.reset()
     await TaskQueueServiceContainer.close()
     RecurringSyncServiceContainer.reset()

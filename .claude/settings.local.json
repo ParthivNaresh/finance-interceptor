@@ -13,7 +13,12 @@
       "Bash(uv version:*)",
       "Bash(uv --version:*)",
       "Bash(uv lock:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(xargs:*)",
+      "Bash(python -m ruff check:*)",
+      "Bash(uv run ruff check:*)",
+      "Bash(uv run mypy:*)",
+      "Bash(uv run pytest:*)"
     ]
   }
 }

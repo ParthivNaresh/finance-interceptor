@@ -15,6 +15,8 @@ from models.plaid import (
 )
 from repositories.account import AccountRepository, get_account_repository
 from repositories.plaid_item import PlaidItemRepository, get_plaid_item_repository
+from services.cache.account_cache import AccountCache, get_account_cache
+from services.cache.invalidation import CacheInvalidator, get_cache_invalidator
 from services.transaction_sync import TransactionSyncService, get_transaction_sync_service
 
 router = APIRouter()
@@ -25,6 +27,8 @@ CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
 PlaidItemRepoDep = Annotated[PlaidItemRepository, Depends(get_plaid_item_repository)]
 AccountRepoDep = Annotated[AccountRepository, Depends(get_account_repository)]
 TransactionSyncDep = Annotated[TransactionSyncService, Depends(get_transaction_sync_service)]
+AccountCacheDep = Annotated[AccountCache, Depends(get_account_cache)]
+CacheInvalidatorDep = Annotated[CacheInvalidator, Depends(get_cache_invalidator)]
 
 LIABILITY_ACCOUNT_TYPES = frozenset({"credit", "loan"})
 
@@ -51,7 +55,12 @@ async def list_accounts(
     current_user: CurrentUserDep,
     plaid_item_repo: PlaidItemRepoDep,
     account_repo: AccountRepoDep,
+    account_cache: AccountCacheDep,
 ) -> AccountsListResponse:
+    cached = account_cache.get_accounts_list(current_user.id)
+    if cached is not None:
+        return cached
+
     plaid_items = plaid_item_repo.get_by_user_id(current_user.id)
 
     items_with_accounts: list[PlaidItemWithAccountsResponse] = []
@@ -96,11 +105,13 @@ async def list_accounts(
             )
         )
 
-    return AccountsListResponse(
+    response = AccountsListResponse(
         plaid_items=items_with_accounts,
         total_balance=total_balance,
         account_count=account_count,
     )
+    account_cache.set_accounts_list(current_user.id, response)
+    return response
 
 
 @router.get(
@@ -159,6 +170,7 @@ async def sync_account(
     account_repo: AccountRepoDep,
     plaid_item_repo: PlaidItemRepoDep,
     sync_service: TransactionSyncDep,
+    cache_invalidator: CacheInvalidatorDep,
 ) -> SyncResponse:
     account = account_repo.get_by_id(account_id)
     if not account:
@@ -176,6 +188,7 @@ async def sync_account(
 
     try:
         result = sync_service.sync_plaid_item(UUID(plaid_item["id"]))
+        cache_invalidator.on_transaction_sync(current_user.id)
         return SyncResponse(
             success=True,
             transactions_added=result.added,
@@ -202,6 +215,7 @@ async def delete_plaid_item(
     plaid_item_id: UUID,
     current_user: CurrentUserDep,
     plaid_item_repo: PlaidItemRepoDep,
+    cache_invalidator: CacheInvalidatorDep,
 ) -> None:
     plaid_item = plaid_item_repo.get_by_id(plaid_item_id)
     if not plaid_item or plaid_item["user_id"] != str(current_user.id):
@@ -211,3 +225,4 @@ async def delete_plaid_item(
         )
 
     plaid_item_repo.delete_by_id(plaid_item_id)
+    cache_invalidator.on_plaid_item_deleted(current_user.id)

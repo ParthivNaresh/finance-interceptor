@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from services.analytics.computation_manager import SpendingComputationManager
     from services.analytics.creep_scorer import CreepScorer
     from services.analytics.merchant_stats_aggregator import MerchantStatsAggregator
+    from services.cache.invalidation import CacheInvalidator
     from services.recurring import RecurringSyncService
     from services.task_queue import TaskQueueService
     from services.transaction_sync import TransactionSyncService
@@ -21,6 +22,7 @@ class WorkerContext:
     cash_flow_aggregator: "CashFlowAggregator"
     baseline_calculator: "BaselineCalculator"
     creep_scorer: "CreepScorer"
+    cache_invalidator: "CacheInvalidator"
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,3 +37,4 @@ class WebhookWorkerContext:
     cash_flow_aggregator: "CashFlowAggregator"
     baseline_calculator: "BaselineCalculator"
     creep_scorer: "CreepScorer"
+    cache_invalidator: "CacheInvalidator"
