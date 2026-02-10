@@ -1,3 +1,4 @@
+from errors import EncryptionError, TaskQueueError
 from services.analytics import (
     COMPUTATION_TYPE_SPENDING,
     AggregationResult,
@@ -15,7 +16,6 @@ from services.analytics import (
 )
 from services.auth import AuthService, AuthServiceContainer, get_auth_service
 from services.database import DatabaseService, DatabaseServiceContainer, get_database_service
-from errors import EncryptionError
 from services.encryption import (
     EncryptionService,
     EncryptionServiceContainer,
@@ -38,7 +38,6 @@ from services.recurring import (
     get_alert_detection_service,
     get_recurring_sync_service,
 )
-from errors import TaskQueueError
 from services.task_queue import (
     EnqueueResult,
     TaskQueueService,
