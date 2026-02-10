@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from models.enums import FrequencyType, StreamStatus, StreamType
@@ -152,7 +152,7 @@ class RecurringSyncService:
         user_id: UUID,
         plaid_item_id: UUID,
         account_id_map: dict[str, UUID],
-    ) -> dict:
+    ) -> dict[str, Any]:
         account_id = account_id_map.get(stream.account_id)
         if not account_id:
             return {"created": False, "alerts": []}
@@ -198,7 +198,7 @@ class RecurringSyncService:
             "alerts": alerts,
         }
 
-    def _build_cancelled_message(self, stream: dict) -> str:
+    def _build_cancelled_message(self, stream: dict[str, Any]) -> str:
         merchant = stream.get("merchant_name") or stream.get("description", "Unknown")
         return f"We haven't seen a charge from {merchant} recently."
 

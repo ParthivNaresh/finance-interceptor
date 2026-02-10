@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from services.analytics.cash_flow_aggregator import CashFlowMetrics
 
 
-class CashFlowMetricsRepository(BaseRepository):
+class CashFlowMetricsRepository(BaseRepository[Any, Any]):
     def __init__(self, database_service: DatabaseService) -> None:
         super().__init__(database_service, "cash_flow_metrics")
 

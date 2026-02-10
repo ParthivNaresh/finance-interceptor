@@ -47,14 +47,18 @@ class PlaidRecurringStream:
         first = self._data.get("first_date")
         if isinstance(first, str):
             return date.fromisoformat(first)
-        return first
+        if isinstance(first, date):
+            return first
+        raise ValueError("first_date is required and must be a date or ISO string")
 
     @property
     def last_date(self) -> date:
         last = self._data.get("last_date")
         if isinstance(last, str):
             return date.fromisoformat(last)
-        return last
+        if isinstance(last, date):
+            return last
+        raise ValueError("last_date is required and must be a date or ISO string")
 
     @property
     def predicted_next_date(self) -> date | None:
@@ -63,7 +67,9 @@ class PlaidRecurringStream:
             return None
         if isinstance(predicted, str):
             return date.fromisoformat(predicted)
-        return predicted
+        if isinstance(predicted, date):
+            return predicted
+        return None
 
     @property
     def frequency(self) -> str:
@@ -106,14 +112,16 @@ class PlaidRecurringStream:
     def category_primary(self) -> str | None:
         pfc = self._data.get("personal_finance_category")
         if pfc and isinstance(pfc, dict):
-            return pfc.get("primary")
+            value = pfc.get("primary")
+            return str(value) if value is not None else None
         return None
 
     @property
     def category_detailed(self) -> str | None:
         pfc = self._data.get("personal_finance_category")
         if pfc and isinstance(pfc, dict):
-            return pfc.get("detailed")
+            value = pfc.get("detailed")
+            return str(value) if value is not None else None
         return None
 
     @property
@@ -191,7 +199,8 @@ class PlaidService:
         response = self._client.link_token_create(request)
 
         log.info("plaid.link_token.created")
-        return response.to_dict()
+        result: dict[str, str] = response.to_dict()
+        return result
 
     def exchange_public_token(self, public_token: str) -> dict[str, str]:
         logger.info("plaid.public_token.exchanging")
@@ -346,7 +355,8 @@ class PlaidService:
             key_kty=key_data.get("kty"),
         )
 
-        return key_data
+        result: dict[str, Any] = key_data
+        return result
 
     def _parse_transaction(self, txn: Any) -> PlaidTransactionData:
         location = txn.location
@@ -363,7 +373,7 @@ class PlaidService:
             }
 
         pfc = txn.personal_finance_category
-        pfc_data: dict[str, str] | None = None
+        pfc_data: dict[str, str | None] | None = None
         if pfc:
             pfc_data = {
                 "primary": pfc.primary,

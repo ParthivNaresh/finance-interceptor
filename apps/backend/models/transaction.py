@@ -129,7 +129,7 @@ class PlaidTransactionData(BaseModel):
     pending_transaction_id: str | None = None
     category_id: str | None = None
     category: list[str] | None = None
-    personal_finance_category: dict[str, str] | None = None
+    personal_finance_category: dict[str, str | None] | None = None
     location: dict[str, str | float | None] | None = None
     logo_url: str | None = None
     website: str | None = None

@@ -48,9 +48,9 @@ class TestStableSpending:
         assert len(trend) >= 3
 
         amounts = [amount for _, amount in trend]
-        avg = sum(amounts) / len(amounts)
+        avg = sum(amounts, Decimal("0")) / Decimal(len(amounts))
         max_deviation = max(abs(a - avg) for a in amounts)
-        deviation_pct = (max_deviation / avg) * 100 if avg > 0 else 0
+        deviation_pct = (max_deviation / avg) * 100 if avg > 0 else Decimal("0")
 
         assert deviation_pct < 20
 
@@ -63,16 +63,16 @@ class TestLifestyleCreepDetection:
         trend = creep_user.get_category_trend("FOOD_AND_DRINK")
         assert len(trend) >= 6
 
-        baseline_avg = sum(t[1] for t in trend[:3]) / 3
-        recent_avg = sum(t[1] for t in trend[3:6]) / 3
+        baseline_avg = sum((t[1] for t in trend[:3]), Decimal("0")) / Decimal("3")
+        recent_avg = sum((t[1] for t in trend[3:6]), Decimal("0")) / Decimal("3")
 
         assert recent_avg > baseline_avg
 
     def test_creep_percentage_matches_expected(self, creep_user: ScenarioResult) -> None:
         trend = creep_user.get_category_trend("FOOD_AND_DRINK")
 
-        baseline_avg = sum(t[1] for t in trend[:3]) / 3
-        recent_avg = sum(t[1] for t in trend[3:6]) / 3
+        baseline_avg = sum((t[1] for t in trend[:3]), Decimal("0")) / Decimal("3")
+        recent_avg = sum((t[1] for t in trend[3:6]), Decimal("0")) / Decimal("3")
 
         actual_increase_pct = ((recent_avg - baseline_avg) / baseline_avg) * 100
 

@@ -139,8 +139,11 @@ class LifestyleCreepScoreRepository(
         if not scores:
             return None
 
-        total = sum(Decimal(str(s["percentage_change"])) for s in scores)
-        return total / len(scores)
+        total = sum(
+            (Decimal(str(s["percentage_change"])) for s in scores),
+            Decimal("0"),
+        )
+        return total / Decimal(len(scores))
 
     def upsert(self, data: LifestyleCreepScoreCreate) -> dict[str, Any]:
         dump = data.model_dump(mode="json")

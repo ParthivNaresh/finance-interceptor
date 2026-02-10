@@ -80,8 +80,11 @@ class SpendingPeriodRepository(BaseRepository[SpendingPeriodResponse, SpendingPe
         if not periods:
             return None
 
-        total = sum(Decimal(str(p["total_outflow_excluding_transfers"])) for p in periods)
-        return total / len(periods)
+        total = sum(
+            (Decimal(str(p["total_outflow_excluding_transfers"])) for p in periods),
+            Decimal("0"),
+        )
+        return total / Decimal(len(periods))
 
     def get_unfinalized_periods(
         self,

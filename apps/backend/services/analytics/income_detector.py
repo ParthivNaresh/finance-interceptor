@@ -157,7 +157,12 @@ class IncomeDetector:
                 continue
 
             source_name = self._extract_source_name(txn)
-            txn_id = UUID(txn["id"]) if isinstance(txn.get("id"), str) else txn.get("id")
+            raw_id = txn.get("id")
+            if raw_id is None:
+                continue
+            txn_id = UUID(raw_id) if isinstance(raw_id, str) else raw_id
+            if not isinstance(txn_id, UUID):
+                continue
             account_id = self._parse_uuid(txn.get("account_id"))
 
             income_transactions.append(
@@ -211,7 +216,7 @@ class IncomeDetector:
         amounts = [t.amount for t in sorted_txns]
         dates = [t.transaction_date for t in sorted_txns]
 
-        average_amount = sum(amounts) / len(amounts)
+        average_amount = Decimal(sum(amounts)) / Decimal(len(amounts))
         last_amount = amounts[-1]
         first_date = dates[0]
         last_date = dates[-1]
@@ -309,12 +314,12 @@ class IncomeDetector:
         if len(amounts) < 2:
             return Decimal("0.50")
 
-        avg = sum(amounts) / len(amounts)
+        avg = sum(amounts, Decimal("0")) / Decimal(len(amounts))
         if avg == 0:
             return Decimal("0.00")
 
         deviations = [abs(a - avg) / avg for a in amounts]
-        avg_deviation = sum(deviations) / len(deviations)
+        avg_deviation = sum(deviations, Decimal("0")) / Decimal(len(deviations))
 
         consistency = Decimal("1.00") - min(Decimal("1.00"), avg_deviation)
         return consistency
@@ -323,16 +328,16 @@ class IncomeDetector:
         if len(dates) < 3:
             return Decimal("0.50")
 
-        deltas = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
+        deltas = [Decimal((dates[i + 1] - dates[i]).days) for i in range(len(dates) - 1)]
 
-        avg_delta = sum(deltas) / len(deltas)
+        avg_delta = sum(deltas, Decimal("0")) / Decimal(len(deltas))
         if avg_delta == 0:
             return Decimal("0.00")
 
         deviations = [abs(d - avg_delta) / avg_delta for d in deltas]
-        avg_deviation = sum(deviations) / len(deviations)
+        avg_deviation = sum(deviations, Decimal("0")) / Decimal(len(deviations))
 
-        regularity = Decimal("1.00") - min(Decimal("1.00"), Decimal(str(avg_deviation)))
+        regularity = Decimal("1.00") - min(Decimal("1.00"), avg_deviation)
         return regularity
 
     def _get_type_confidence_bonus(self, source_type: IncomeSourceType) -> Decimal:

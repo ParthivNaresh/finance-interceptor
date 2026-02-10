@@ -1,6 +1,6 @@
 from typing import Any
 
-from supabase import Client, create_client
+from supabase import Client, ClientOptions, create_client
 
 from config import Settings, get_settings
 
@@ -33,7 +33,7 @@ class DatabaseService:
         return create_client(
             self._settings.supabase_url,
             self._settings.supabase_anon_key,
-            options={"headers": {"Authorization": f"Bearer {access_token}"}},
+            options=ClientOptions(headers={"Authorization": f"Bearer {access_token}"}),
         )
 
     def table(self, name: str) -> Any:

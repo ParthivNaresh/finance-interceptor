@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from services.analytics.income_detector import DetectedIncomeSource
 
 
-class IncomeSourceRepository(BaseRepository):
+class IncomeSourceRepository(BaseRepository[Any, Any]):
     def __init__(self, database_service: DatabaseService) -> None:
         super().__init__(database_service, "income_sources")
 

@@ -214,7 +214,8 @@ class SpendingComputationManager:
         if not transactions:
             return _ComputationTotals()
 
-        dates = [self._parse_date(txn.get("date")) for txn in transactions if txn.get("date")]
+        parsed_dates = [self._parse_date(txn.get("date")) for txn in transactions if txn.get("date")]
+        dates = [d for d in parsed_dates if d is not None]
         if not dates:
             return _ComputationTotals()
 

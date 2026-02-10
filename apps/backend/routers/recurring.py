@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -34,7 +34,7 @@ TransactionRepoDep = Annotated[TransactionRepository, Depends(get_transaction_re
 RecurringSyncServiceDep = Annotated[RecurringSyncService, Depends(get_recurring_sync_service)]
 
 
-def _to_stream_response(stream: dict) -> RecurringStreamResponse:
+def _to_stream_response(stream: dict[str, Any]) -> RecurringStreamResponse:
     return RecurringStreamResponse(
         id=UUID(stream["id"]),
         user_id=UUID(stream["user_id"]),
@@ -67,7 +67,7 @@ def _to_stream_response(stream: dict) -> RecurringStreamResponse:
     )
 
 
-def _to_transaction_response(txn: dict) -> StreamTransactionResponse:
+def _to_transaction_response(txn: dict[str, Any]) -> StreamTransactionResponse:
     return StreamTransactionResponse(
         id=UUID(txn["id"]),
         account_id=UUID(txn["account_id"]),
@@ -102,7 +102,7 @@ def _parse_datetime(value: str | datetime) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def _calculate_monthly_amount(stream: dict) -> Decimal:
+def _calculate_monthly_amount(stream: dict[str, Any]) -> Decimal:
     amount = Decimal(str(stream["last_amount"]))
     frequency = FrequencyType(stream["frequency"])
 

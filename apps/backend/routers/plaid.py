@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -206,7 +206,7 @@ async def exchange_public_token(
 def _sync_accounts(
     account_repo: AccountRepository,
     plaid_item_id: UUID,
-    plaid_accounts: list[dict],
+    plaid_accounts: list[dict[str, Any]],
 ) -> None:
     existing_accounts = account_repo.get_by_plaid_item_id(plaid_item_id)
     existing_account_ids = {acc["account_id"] for acc in existing_accounts}

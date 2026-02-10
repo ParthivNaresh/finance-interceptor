@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from models.analytics import (
@@ -426,7 +426,7 @@ class CreepScorer:
 
     def _build_baseline_map(
         self,
-        baselines: list[dict],
+        baselines: list[dict[str, Any]],
     ) -> dict[str, Decimal]:
         return {
             b["category_primary"]: Decimal(str(b["baseline_monthly_amount"])) for b in baselines

@@ -92,7 +92,7 @@ class AnalyticsComputationLogRepository(
         rows_affected: int | None = None,
         error_message: str | None = None,
     ) -> dict[str, Any]:
-        data = {
+        data: dict[str, str | int | None] = {
             "user_id": str(user_id),
             "computation_type": computation_type,
             "status": status.value,

@@ -15,11 +15,12 @@ class AuthService:
     def validate_token(self, token: str) -> AuthenticatedUser:
         try:
             response = self._db.service_client.auth.get_user(token)
-            user = response.user
 
-            if user is None:
+            if response is None or response.user is None:
                 logger.warning("auth.token_invalid", reason="no_user_found")
                 raise UnauthorizedError(message="Invalid or expired token")
+
+            user = response.user
 
             authenticated_user = AuthenticatedUser(
                 id=UUID(user.id),

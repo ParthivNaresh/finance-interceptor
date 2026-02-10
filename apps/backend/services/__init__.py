@@ -15,8 +15,8 @@ from services.analytics import (
 )
 from services.auth import AuthService, AuthServiceContainer, get_auth_service
 from services.database import DatabaseService, DatabaseServiceContainer, get_database_service
+from errors import EncryptionError
 from services.encryption import (
-    EncryptionError,
     EncryptionService,
     EncryptionServiceContainer,
     get_encryption_service,
@@ -38,9 +38,9 @@ from services.recurring import (
     get_alert_detection_service,
     get_recurring_sync_service,
 )
+from errors import TaskQueueError
 from services.task_queue import (
     EnqueueResult,
-    TaskQueueError,
     TaskQueueService,
     TaskQueueServiceContainer,
     get_task_queue_service,

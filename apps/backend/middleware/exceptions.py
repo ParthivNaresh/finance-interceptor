@@ -50,7 +50,10 @@ def _json_error(
     )
 
 
-def domain_error_handler(request: Request, exc: DomainError) -> Response:
+def domain_error_handler(request: Request, exc: Exception) -> Response:
+    if not isinstance(exc, DomainError):
+        raise TypeError(f"Expected DomainError, got {type(exc).__name__}")
+
     request_id = get_request_id(request)
 
     log_method = logger.warning if 400 <= exc.http_status < 500 else logger.error
@@ -79,7 +82,10 @@ def domain_error_handler(request: Request, exc: DomainError) -> Response:
     )
 
 
-def http_exception_handler(request: Request, exc: HTTPException) -> Response:
+def http_exception_handler(request: Request, exc: Exception) -> Response:
+    if not isinstance(exc, HTTPException):
+        raise TypeError(f"Expected HTTPException, got {type(exc).__name__}")
+
     request_id = get_request_id(request)
 
     status_code = int(getattr(exc, "status_code", 500) or 500)
@@ -133,7 +139,10 @@ def http_exception_handler(request: Request, exc: HTTPException) -> Response:
     )
 
 
-def request_validation_error_handler(request: Request, exc: RequestValidationError) -> Response:
+def request_validation_error_handler(request: Request, exc: Exception) -> Response:
+    if not isinstance(exc, RequestValidationError):
+        raise TypeError(f"Expected RequestValidationError, got {type(exc).__name__}")
+
     request_id = get_request_id(request)
 
     field_errors: list[ApiFieldError] = []

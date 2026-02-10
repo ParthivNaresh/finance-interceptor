@@ -61,7 +61,10 @@ def _create_limiter(settings: Settings) -> Limiter:
     )
 
 
-def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
+def rate_limit_exceeded_handler(request: Request, exc: Exception) -> Response:
+    if not isinstance(exc, RateLimitExceeded):
+        raise TypeError(f"Expected RateLimitExceeded, got {type(exc).__name__}")
+
     retry_after = _extract_retry_after(exc)
     request_id = get_request_id(request)
 

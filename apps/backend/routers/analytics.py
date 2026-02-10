@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -58,7 +58,11 @@ from repositories.merchant_spending import (
     MerchantSpendingRepository,
     get_merchant_spending_repository,
 )
-from repositories.merchant_stats import MerchantStatsRepository, get_merchant_stats_repository
+from repositories.merchant_stats import (
+    MerchantStatsRepository,
+    SortField,
+    get_merchant_stats_repository,
+)
 from repositories.spending_period import SpendingPeriodRepository, get_spending_period_repository
 from repositories.transaction import TransactionRepository, get_transaction_repository
 from services.analytics import get_spending_computation_manager
@@ -480,9 +484,8 @@ async def get_category_breakdown_by_range(
         offset=0,
     )
 
-    category_data: dict[str, dict[str, Decimal | int]] = defaultdict(
-        lambda: {"total": Decimal("0"), "count": 0}
-    )
+    category_totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    category_counts: dict[str, int] = defaultdict(int)
     total_spending = Decimal("0")
 
     for txn in transactions:
@@ -491,22 +494,21 @@ async def get_category_breakdown_by_range(
             continue
 
         category = txn.get("personal_finance_category_primary") or "UNCATEGORIZED"
-        category_data[category]["total"] += amount
-        category_data[category]["count"] += 1
+        category_totals[category] += amount
+        category_counts[category] += 1
         total_spending += amount
 
     sorted_categories = sorted(
-        category_data.items(),
-        key=lambda x: x[1]["total"],
+        category_totals.items(),
+        key=lambda x: x[1],
         reverse=True,
     )[:limit]
 
     categories: list[CategorySpendingSummary] = []
-    for category_name, data in sorted_categories:
-        amount = data["total"]
-        count = int(data["count"])
+    for category_name, amount in sorted_categories:
+        count = category_counts[category_name]
         percentage = (amount / total_spending * 100) if total_spending > 0 else None
-        avg = amount / count if count > 0 else None
+        avg = amount / Decimal(count) if count > 0 else None
 
         categories.append(
             CategorySpendingSummary(
@@ -580,12 +582,10 @@ async def get_category_detail(
     category_count = 0
     total_all_spending = Decimal("0")
 
-    subcategory_data: dict[str, dict[str, Decimal | int]] = defaultdict(
-        lambda: {"total": Decimal("0"), "count": 0}
-    )
-    merchant_data: dict[str, dict[str, Decimal | int]] = defaultdict(
-        lambda: {"total": Decimal("0"), "count": 0}
-    )
+    subcategory_totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    subcategory_counts: dict[str, int] = defaultdict(int)
+    merchant_totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    merchant_counts: dict[str, int] = defaultdict(int)
 
     for txn in transactions:
         amount = Decimal(str(txn.get("amount", 0)))
@@ -600,25 +600,24 @@ async def get_category_detail(
             category_count += 1
 
             detailed_cat = txn.get("personal_finance_category_detailed") or "Other"
-            subcategory_data[detailed_cat]["total"] += amount
-            subcategory_data[detailed_cat]["count"] += 1
+            subcategory_totals[detailed_cat] += amount
+            subcategory_counts[detailed_cat] += 1
 
             merchant_name = txn.get("merchant_name") or txn.get("name") or "Unknown"
-            merchant_data[merchant_name]["total"] += amount
-            merchant_data[merchant_name]["count"] += 1
+            merchant_totals[merchant_name] += amount
+            merchant_counts[merchant_name] += 1
 
     sorted_subcategories = sorted(
-        subcategory_data.items(),
-        key=lambda x: x[1]["total"],
+        subcategory_totals.items(),
+        key=lambda x: x[1],
         reverse=True,
     )[:subcategory_limit]
 
     subcategories: list[SubcategorySpendingSummary] = []
-    for subcat_name, data in sorted_subcategories:
-        amount = data["total"]
-        count = int(data["count"])
+    for subcat_name, amount in sorted_subcategories:
+        count = subcategory_counts[subcat_name]
         percentage = (amount / category_total * 100) if category_total > 0 else None
-        avg = amount / count if count > 0 else None
+        avg = amount / Decimal(count) if count > 0 else None
 
         subcategories.append(
             SubcategorySpendingSummary(
@@ -631,17 +630,16 @@ async def get_category_detail(
         )
 
     sorted_merchants = sorted(
-        merchant_data.items(),
-        key=lambda x: x[1]["total"],
+        merchant_totals.items(),
+        key=lambda x: x[1],
         reverse=True,
     )[:merchant_limit]
 
     top_merchants: list[MerchantSpendingSummary] = []
-    for merchant_name, data in sorted_merchants:
-        amount = data["total"]
-        count = int(data["count"])
+    for merchant_name, amount in sorted_merchants:
+        count = merchant_counts[merchant_name]
         percentage = (amount / category_total * 100) if category_total > 0 else None
-        avg = amount / count if count > 0 else None
+        avg = amount / Decimal(count) if count > 0 else None
 
         top_merchants.append(
             MerchantSpendingSummary(
@@ -713,9 +711,8 @@ async def get_merchant_breakdown_by_range(
         offset=0,
     )
 
-    merchant_data: dict[str, dict[str, Decimal | int]] = defaultdict(
-        lambda: {"total": Decimal("0"), "count": 0}
-    )
+    merchant_totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    merchant_counts: dict[str, int] = defaultdict(int)
     total_spending = Decimal("0")
 
     for txn in transactions:
@@ -724,22 +721,21 @@ async def get_merchant_breakdown_by_range(
             continue
 
         merchant_name = txn.get("merchant_name") or txn.get("name") or "Unknown"
-        merchant_data[merchant_name]["total"] += amount
-        merchant_data[merchant_name]["count"] += 1
+        merchant_totals[merchant_name] += amount
+        merchant_counts[merchant_name] += 1
         total_spending += amount
 
     sorted_merchants = sorted(
-        merchant_data.items(),
-        key=lambda x: x[1]["total"],
+        merchant_totals.items(),
+        key=lambda x: x[1],
         reverse=True,
     )[:limit]
 
     merchants: list[MerchantSpendingSummary] = []
-    for merchant_name, data in sorted_merchants:
-        amount = data["total"]
-        count = int(data["count"])
+    for merchant_name, amount in sorted_merchants:
+        count = merchant_counts[merchant_name]
         percentage = (amount / total_spending * 100) if total_spending > 0 else None
-        avg = amount / count if count > 0 else None
+        avg = amount / Decimal(count) if count > 0 else None
 
         merchants.append(
             MerchantSpendingSummary(
@@ -809,7 +805,7 @@ async def get_merchant_stats(
     limit: int = Query(default=50, ge=1, le=200, description="Number of merchants to return"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ) -> MerchantStatsListResponse:
-    sort_field_map = {
+    sort_field_map: dict[str, SortField] = {
         "spend": "total_lifetime_spend",
         "frequency": "total_transaction_count",
         "recent": "last_transaction_date",
@@ -1024,7 +1020,7 @@ async def trigger_cash_flow_computation(
     )
 
 
-def _to_cash_flow_response(metrics: dict) -> CashFlowMetricsResponse:
+def _to_cash_flow_response(metrics: dict[str, Any]) -> CashFlowMetricsResponse:
     return CashFlowMetricsResponse(
         id=UUID(metrics["id"]),
         user_id=UUID(metrics["user_id"]),
@@ -1048,7 +1044,7 @@ def _to_cash_flow_response(metrics: dict) -> CashFlowMetricsResponse:
     )
 
 
-def _to_income_source_response(source: dict) -> IncomeSourceResponse:
+def _to_income_source_response(source: dict[str, Any]) -> IncomeSourceResponse:
     return IncomeSourceResponse(
         id=UUID(source["id"]),
         user_id=UUID(source["user_id"]),
@@ -1072,7 +1068,7 @@ def _to_income_source_response(source: dict) -> IncomeSourceResponse:
 
 
 def _to_spending_period_with_delta(
-    period: dict,
+    period: dict[str, Any],
     previous_period_outflow: Decimal | None,
     change_amount: Decimal | None,
     change_percentage: Decimal | None,
@@ -1099,7 +1095,7 @@ def _to_spending_period_with_delta(
     )
 
 
-def _to_merchant_stats_response(merchant: dict) -> MerchantStatsResponse:
+def _to_merchant_stats_response(merchant: dict[str, Any]) -> MerchantStatsResponse:
     return MerchantStatsResponse(
         id=UUID(merchant["id"]),
         user_id=UUID(merchant["user_id"]),
@@ -1139,7 +1135,7 @@ def _to_merchant_stats_response(merchant: dict) -> MerchantStatsResponse:
 
 
 def _build_category_summaries(
-    categories: list[dict],
+    categories: list[dict[str, Any]],
     total_spending: Decimal,
 ) -> list[CategorySpendingSummary]:
     result: list[CategorySpendingSummary] = []
@@ -1165,7 +1161,7 @@ def _build_category_summaries(
 
 
 def _build_merchant_summaries(
-    merchants: list[dict],
+    merchants: list[dict[str, Any]],
     total_spending: Decimal,
 ) -> list[MerchantSpendingSummary]:
     result: list[MerchantSpendingSummary] = []
@@ -1328,7 +1324,7 @@ async def compute_lifestyle_baselines(
 
 @router.post(
     "/lifestyle-creep/baselines/lock",
-    response_model=dict,
+    response_model=dict[str, int | str],
     summary="Lock lifestyle baselines",
     description="Locks baselines to preserve the reference point",
 )
@@ -1337,14 +1333,14 @@ async def lock_lifestyle_baselines(
     request: Request,
     current_user: CurrentUserDep,
     baseline_calculator: BaselineCalculatorDep,
-) -> dict:
+) -> dict[str, int | str]:
     locked_count = baseline_calculator.lock_baselines(current_user.id)
     return {"locked_count": locked_count, "message": f"Locked {locked_count} baselines"}
 
 
 @router.post(
     "/lifestyle-creep/baselines/unlock",
-    response_model=dict,
+    response_model=dict[str, int | str],
     summary="Unlock lifestyle baselines",
     description="Unlocks baselines to allow recomputation",
 )
@@ -1353,7 +1349,7 @@ async def unlock_lifestyle_baselines(
     request: Request,
     current_user: CurrentUserDep,
     baseline_calculator: BaselineCalculatorDep,
-) -> dict:
+) -> dict[str, int | str]:
     unlocked_count = baseline_calculator.unlock_baselines(current_user.id)
     return {"unlocked_count": unlocked_count, "message": f"Unlocked {unlocked_count} baselines"}
 
@@ -1424,7 +1420,7 @@ async def get_lifestyle_creep_history(
 
     return LifestyleCreepListResponse(
         periods=summaries,
-        total=len(summaries),
+        total_periods=len(summaries),
     )
 
 
@@ -1485,7 +1481,7 @@ async def compute_current_lifestyle_creep(
     return creep_scorer.compute_current_period(current_user.id)
 
 
-def _to_baseline_response(baseline: dict) -> LifestyleBaselineResponse:
+def _to_baseline_response(baseline: dict[str, Any]) -> LifestyleBaselineResponse:
     return LifestyleBaselineResponse(
         id=UUID(baseline["id"]),
         user_id=UUID(baseline["user_id"]),

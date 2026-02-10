@@ -203,7 +203,10 @@ class BaselineCalculator:
             if not relevant_records:
                 continue
 
-            total_amount = sum(Decimal(str(r["total_amount"])) for r in relevant_records)
+            total_amount = sum(
+                (Decimal(str(r["total_amount"])) for r in relevant_records),
+                Decimal("0"),
+            )
             total_transactions = sum(int(r["transaction_count"]) for r in relevant_records)
             months_with_data = len(relevant_records)
 
