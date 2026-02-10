@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(source:*)",
+      "Bash(python3:*)",
+      "WebSearch",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:docs.astral.sh)",
+      "Bash(uv version:*)",
+      "Bash(uv --version:*)",
+      "Bash(uv lock:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(xargs:*)",
+      "Bash(python -m ruff check:*)",
+      "Bash(uv run ruff check:*)",
+      "Bash(uv run mypy:*)",
+      "Bash(uv run pytest:*)"
+    ]
+  }
+}
