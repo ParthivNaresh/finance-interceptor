@@ -54,44 +54,44 @@ backend-kill:
 
 # Start backend server (kills existing process first)
 backend-start: backend-kill
-    cd apps/backend && source .venv/bin/activate && \
-    export SSL_CERT_FILE=$(.venv/bin/python -c "import certifi; print(certifi.where())") && \
-    export REQUESTS_CA_BUNDLE=$SSL_CERT_FILE && \
-    uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    cd apps/backend && \
+    SSL_CERT_FILE=$(.venv/bin/python -c "import certifi; print(certifi.where())") \
+    REQUESTS_CA_BUNDLE=$(.venv/bin/python -c "import certifi; print(certifi.where())") \
+    .venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # Start background worker
 worker-start:
-    cd apps/backend && source .venv/bin/activate && \
-    export SSL_CERT_FILE=$(.venv/bin/python -c "import certifi; print(certifi.where())") && \
-    export REQUESTS_CA_BUNDLE=$SSL_CERT_FILE && \
-    arq workers.WorkerSettings
+    cd apps/backend && \
+    SSL_CERT_FILE=$(.venv/bin/python -c "import certifi; print(certifi.where())") \
+    REQUESTS_CA_BUNDLE=$(.venv/bin/python -c "import certifi; print(certifi.where())") \
+    .venv/bin/arq workers.WorkerSettings
 
 # Lint backend code
 backend-lint:
-    cd apps/backend && source .venv/bin/activate && ruff check .
+    cd apps/backend && .venv/bin/ruff check .
 
 # Lint and fix backend code
 backend-lint-fix:
-    cd apps/backend && source .venv/bin/activate && ruff check . --fix
+    cd apps/backend && .venv/bin/ruff check . --fix
 
 # Check backend formatting (fails if not formatted)
 backend-format-check:
-    cd apps/backend && source .venv/bin/activate && ruff format --check .
+    cd apps/backend && .venv/bin/ruff format --check .
 
 # Format backend code
 backend-format:
-    cd apps/backend && source .venv/bin/activate && ruff format .
+    cd apps/backend && .venv/bin/ruff format .
 
 # Type check backend code
 backend-typecheck:
-    cd apps/backend && source .venv/bin/activate && mypy .
+    cd apps/backend && .venv/bin/mypy .
 
 # Run backend tests
 backend-test *args='':
-    cd apps/backend && source .venv/bin/activate && \
-    export SSL_CERT_FILE=$(.venv/bin/python -c "import certifi; print(certifi.where())") && \
-    export REQUESTS_CA_BUNDLE=$SSL_CERT_FILE && \
-    pytest tests/ {{ args }}
+    cd apps/backend && \
+    SSL_CERT_FILE=$(.venv/bin/python -c "import certifi; print(certifi.where())") \
+    REQUESTS_CA_BUNDLE=$(.venv/bin/python -c "import certifi; print(certifi.where())") \
+    .venv/bin/pytest tests/ {{ args }}
 
 # Run backend tests with coverage report
 backend-test-cov:
@@ -186,11 +186,11 @@ format: backend-format
 # Run CI checks with no caching (deterministic, mirrors GitHub Actions)
 ci-check:
     @echo "=== Backend lint (no cache) ==="
-    cd apps/backend && source .venv/bin/activate && ruff check --no-cache .
+    cd apps/backend && .venv/bin/ruff check --no-cache .
     @echo "=== Backend format check (no cache) ==="
-    cd apps/backend && source .venv/bin/activate && ruff format --no-cache --check .
+    cd apps/backend && .venv/bin/ruff format --no-cache --check .
     @echo "=== Backend typecheck (no incremental cache) ==="
-    cd apps/backend && source .venv/bin/activate && mypy --no-incremental .
+    cd apps/backend && .venv/bin/mypy --no-incremental .
     @echo "=== Mobile lint ==="
     cd apps/mobile && bun run lint
     @echo "=== Mobile typecheck ==="
