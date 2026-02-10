@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 
-class WebhookVerificationFailureReason(str, Enum):
+class WebhookVerificationFailureReason(StrEnum):
     MISSING_HEADER = "missing_verification_header"
     INVALID_JWT_FORMAT = "invalid_jwt_format"
     INVALID_ALGORITHM = "invalid_algorithm"

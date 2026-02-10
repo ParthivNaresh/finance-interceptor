@@ -1,12 +1,12 @@
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
-class WebhookType(str, Enum):
+class WebhookType(StrEnum):
     TRANSACTIONS = "TRANSACTIONS"
     ITEM = "ITEM"
     AUTH = "AUTH"
@@ -17,7 +17,7 @@ class WebhookType(str, Enum):
     INCOME = "INCOME"
 
 
-class TransactionsWebhookCode(str, Enum):
+class TransactionsWebhookCode(StrEnum):
     SYNC_UPDATES_AVAILABLE = "SYNC_UPDATES_AVAILABLE"
     RECURRING_TRANSACTIONS_UPDATE = "RECURRING_TRANSACTIONS_UPDATE"
     INITIAL_UPDATE = "INITIAL_UPDATE"
@@ -26,7 +26,7 @@ class TransactionsWebhookCode(str, Enum):
     TRANSACTIONS_REMOVED = "TRANSACTIONS_REMOVED"
 
 
-class ItemWebhookCode(str, Enum):
+class ItemWebhookCode(StrEnum):
     ERROR = "ERROR"
     LOGIN_REPAIRED = "LOGIN_REPAIRED"
     PENDING_EXPIRATION = "PENDING_EXPIRATION"
@@ -35,7 +35,7 @@ class ItemWebhookCode(str, Enum):
     WEBHOOK_UPDATE_ACKNOWLEDGED = "WEBHOOK_UPDATE_ACKNOWLEDGED"
 
 
-class WebhookEventStatus(str, Enum):
+class WebhookEventStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -570,7 +570,7 @@ class LifestyleCreepComputationResult(BaseModel):
     error_message: str | None = None
 
 
-class TargetStatusType(str, Enum):
+class TargetStatusType(StrEnum):
     BUILDING = "building"
     ESTABLISHED = "established"
 
@@ -586,13 +586,13 @@ class TargetStatusResponse(BaseModel):
     next_review_at: date | None = None
 
 
-class PacingStatus(str, Enum):
+class PacingStatus(StrEnum):
     ON_TRACK = "on_track"
     AHEAD = "ahead"
     BEHIND = "behind"
 
 
-class PacingMode(str, Enum):
+class PacingMode(StrEnum):
     KICKOFF = "kickoff"
     PACING = "pacing"
     STABILITY = "stability"

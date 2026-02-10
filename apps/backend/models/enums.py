@@ -1,12 +1,12 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class StreamType(str, Enum):
+class StreamType(StrEnum):
     INFLOW = "inflow"
     OUTFLOW = "outflow"
 
 
-class FrequencyType(str, Enum):
+class FrequencyType(StrEnum):
     WEEKLY = "weekly"
     BIWEEKLY = "biweekly"
     SEMI_MONTHLY = "semi_monthly"
@@ -31,7 +31,7 @@ class FrequencyType(str, Enum):
         return mapping.get(plaid_frequency.upper(), cls.UNKNOWN)
 
 
-class StreamStatus(str, Enum):
+class StreamStatus(StrEnum):
     MATURE = "mature"
     EARLY_DETECTION = "early_detection"
     TOMBSTONED = "tombstoned"
@@ -46,7 +46,7 @@ class StreamStatus(str, Enum):
         return mapping.get(plaid_status.upper(), cls.MATURE)
 
 
-class AlertType(str, Enum):
+class AlertType(StrEnum):
     PRICE_INCREASE = "price_increase"
     PRICE_DECREASE = "price_decrease"
     NEW_SUBSCRIPTION = "new_subscription"
@@ -54,40 +54,40 @@ class AlertType(str, Enum):
     MISSED_PAYMENT = "missed_payment"
 
 
-class AlertSeverity(str, Enum):
+class AlertSeverity(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
 
 
-class AlertStatus(str, Enum):
+class AlertStatus(StrEnum):
     UNREAD = "unread"
     READ = "read"
     DISMISSED = "dismissed"
     ACTIONED = "actioned"
 
 
-class UserActionType(str, Enum):
+class UserActionType(StrEnum):
     DISMISSED = "dismissed"
     CANCELLED_SUBSCRIPTION = "cancelled_subscription"
     KEPT = "kept"
     WATCHING = "watching"
 
 
-class PeriodType(str, Enum):
+class PeriodType(StrEnum):
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
     YEARLY = "yearly"
 
 
-class BaselineType(str, Enum):
+class BaselineType(StrEnum):
     ROLLING_3MO = "rolling_3mo"
     ROLLING_12MO = "rolling_12mo"
     SEASONAL = "seasonal"
 
 
-class AnomalyType(str, Enum):
+class AnomalyType(StrEnum):
     LARGE_AMOUNT = "large_amount"
     NEW_MERCHANT = "new_merchant"
     CATEGORY_SPIKE = "category_spike"
@@ -96,7 +96,7 @@ class AnomalyType(str, Enum):
     UNUSUAL_LOCATION = "unusual_location"
 
 
-class AnomalyContext(str, Enum):
+class AnomalyContext(StrEnum):
     SUBSCRIPTION_PRICE_CHANGE = "subscription_price_change"
     DISCRETIONARY_SPIKE = "discretionary_spike"
     NEW_VENDOR = "new_vendor"
@@ -104,7 +104,7 @@ class AnomalyContext(str, Enum):
     UNUSUAL_TIMING = "unusual_timing"
 
 
-class IncomeSourceType(str, Enum):
+class IncomeSourceType(StrEnum):
     SALARY = "salary"
     FREELANCE = "freelance"
     INVESTMENT = "investment"
@@ -113,13 +113,13 @@ class IncomeSourceType(str, Enum):
     OTHER = "other"
 
 
-class ComputationStatus(str, Enum):
+class ComputationStatus(StrEnum):
     SUCCESS = "success"
     FAILED = "failed"
     IN_PROGRESS = "in_progress"
 
 
-class CreepSeverity(str, Enum):
+class CreepSeverity(StrEnum):
     NONE = "none"
     LOW = "low"
     MEDIUM = "medium"
@@ -136,7 +136,7 @@ class CreepSeverity(str, Enum):
         return cls.HIGH
 
 
-class SpendingCategory(str, Enum):
+class SpendingCategory(StrEnum):
     INCOME = "INCOME"
     TRANSFER_IN = "TRANSFER_IN"
     TRANSFER_OUT = "TRANSFER_OUT"
