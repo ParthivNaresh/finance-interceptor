@@ -99,11 +99,11 @@ backend-test-cov:
 
 # Install backend dependencies
 backend-install:
-    cd apps/backend && uv sync --dev
+    cd apps/backend && uv sync --extra dev
 
 # Sync backend from lock file (CI: fails if lock is stale)
 backend-sync-locked:
-    cd apps/backend && uv sync --locked --dev
+    cd apps/backend && uv sync --locked --extra dev
 
 # Install testing framework into backend venv
 backend-install-testing:
@@ -123,7 +123,7 @@ testing-lock:
 
 # Upgrade backend dependencies to latest compatible versions
 backend-upgrade:
-    cd apps/backend && uv lock --upgrade && uv sync --dev
+    cd apps/backend && uv lock --upgrade && uv sync --extra dev
 
 # Show outdated backend dependencies
 backend-outdated:
