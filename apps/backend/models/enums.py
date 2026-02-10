@@ -156,29 +156,33 @@ class SpendingCategory(str, Enum):
 
     @classmethod
     def discretionary_categories(cls) -> frozenset["SpendingCategory"]:
-        return frozenset({
-            cls.ENTERTAINMENT,
-            cls.FOOD_AND_DRINK,
-            cls.GENERAL_MERCHANDISE,
-            cls.PERSONAL_CARE,
-            cls.GENERAL_SERVICES,
-            cls.TRAVEL,
-        })
+        return frozenset(
+            {
+                cls.ENTERTAINMENT,
+                cls.FOOD_AND_DRINK,
+                cls.GENERAL_MERCHANDISE,
+                cls.PERSONAL_CARE,
+                cls.GENERAL_SERVICES,
+                cls.TRAVEL,
+            }
+        )
 
     @classmethod
     def non_discretionary_categories(cls) -> frozenset["SpendingCategory"]:
-        return frozenset({
-            cls.INCOME,
-            cls.TRANSFER_IN,
-            cls.TRANSFER_OUT,
-            cls.LOAN_PAYMENTS,
-            cls.BANK_FEES,
-            cls.RENT_AND_UTILITIES,
-            cls.TRANSPORTATION,
-            cls.MEDICAL,
-            cls.HOME_IMPROVEMENT,
-            cls.GOVERNMENT_AND_NON_PROFIT,
-        })
+        return frozenset(
+            {
+                cls.INCOME,
+                cls.TRANSFER_IN,
+                cls.TRANSFER_OUT,
+                cls.LOAN_PAYMENTS,
+                cls.BANK_FEES,
+                cls.RENT_AND_UTILITIES,
+                cls.TRANSPORTATION,
+                cls.MEDICAL,
+                cls.HOME_IMPROVEMENT,
+                cls.GOVERNMENT_AND_NON_PROFIT,
+            }
+        )
 
     @classmethod
     def is_discretionary(cls, category: str) -> bool:

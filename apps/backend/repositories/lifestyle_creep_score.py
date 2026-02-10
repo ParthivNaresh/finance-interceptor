@@ -10,7 +10,9 @@ from repositories.base import BaseRepository
 from services.database import DatabaseService, get_database_service
 
 
-class LifestyleCreepScoreRepository(BaseRepository[LifestyleCreepScoreResponse, LifestyleCreepScoreCreate]):
+class LifestyleCreepScoreRepository(
+    BaseRepository[LifestyleCreepScoreResponse, LifestyleCreepScoreCreate]
+):
     def __init__(self, database_service: DatabaseService) -> None:
         super().__init__(database_service, "lifestyle_creep_scores")
 
@@ -178,21 +180,11 @@ class LifestyleCreepScoreRepository(BaseRepository[LifestyleCreepScoreResponse, 
         return len(result.data) if result.data else 0
 
     def delete_for_user(self, user_id: UUID) -> int:
-        result = (
-            self._get_table()
-            .delete()
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._get_table().delete().eq("user_id", str(user_id)).execute()
         return len(result.data) if result.data else 0
 
     def count_for_user(self, user_id: UUID) -> int:
-        result = (
-            self._get_table()
-            .select("id", count="exact")
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._get_table().select("id", count="exact").eq("user_id", str(user_id)).execute()
         return result.count or 0
 
 

@@ -3,12 +3,18 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from models.analytics import LifestyleBaselineCreate, LifestyleBaselineResponse, LifestyleBaselineUpdate
+from models.analytics import (
+    LifestyleBaselineCreate,
+    LifestyleBaselineResponse,
+    LifestyleBaselineUpdate,
+)
 from repositories.base import BaseRepository
 from services.database import DatabaseService, get_database_service
 
 
-class LifestyleBaselineRepository(BaseRepository[LifestyleBaselineResponse, LifestyleBaselineCreate]):
+class LifestyleBaselineRepository(
+    BaseRepository[LifestyleBaselineResponse, LifestyleBaselineCreate]
+):
     def __init__(self, database_service: DatabaseService) -> None:
         super().__init__(database_service, "lifestyle_baselines")
 
@@ -17,11 +23,7 @@ class LifestyleBaselineRepository(BaseRepository[LifestyleBaselineResponse, Life
         user_id: UUID,
         locked_only: bool = False,
     ) -> list[dict[str, Any]]:
-        query = (
-            self._get_table()
-            .select("*")
-            .eq("user_id", str(user_id))
-        )
+        query = self._get_table().select("*").eq("user_id", str(user_id))
 
         if locked_only:
             query = query.eq("is_locked", True)
@@ -64,21 +66,11 @@ class LifestyleBaselineRepository(BaseRepository[LifestyleBaselineResponse, Life
         return [dict(item) for item in result.data] if result.data else []
 
     def has_baselines(self, user_id: UUID) -> bool:
-        result = (
-            self._get_table()
-            .select("id", count="exact")
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._get_table().select("id", count="exact").eq("user_id", str(user_id)).execute()
         return (result.count or 0) > 0
 
     def count_for_user(self, user_id: UUID) -> int:
-        result = (
-            self._get_table()
-            .select("id", count="exact")
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._get_table().select("id", count="exact").eq("user_id", str(user_id)).execute()
         return result.count or 0
 
     def update(
@@ -90,23 +82,14 @@ class LifestyleBaselineRepository(BaseRepository[LifestyleBaselineResponse, Life
         if not update_data:
             return self.get_by_id(record_id)
 
-        result = (
-            self._get_table()
-            .update(update_data)
-            .eq("id", str(record_id))
-            .execute()
-        )
+        result = self._get_table().update(update_data).eq("id", str(record_id)).execute()
         if not result.data:
             return None
         return dict(result.data[0])
 
     def upsert(self, data: LifestyleBaselineCreate) -> dict[str, Any]:
         dump = data.model_dump(mode="json")
-        result = (
-            self._get_table()
-            .upsert(dump, on_conflict="user_id,category_primary")
-            .execute()
-        )
+        result = self._get_table().upsert(dump, on_conflict="user_id,category_primary").execute()
         if not result.data:
             raise ValueError("Failed to upsert lifestyle baseline")
         return dict(result.data[0])
@@ -116,11 +99,7 @@ class LifestyleBaselineRepository(BaseRepository[LifestyleBaselineResponse, Life
             return []
 
         data = [r.model_dump(mode="json") for r in records]
-        result = (
-            self._get_table()
-            .upsert(data, on_conflict="user_id,category_primary")
-            .execute()
-        )
+        result = self._get_table().upsert(data, on_conflict="user_id,category_primary").execute()
         return [dict(item) for item in result.data] if result.data else []
 
     def lock_baselines(self, user_id: UUID) -> int:
@@ -144,21 +123,12 @@ class LifestyleBaselineRepository(BaseRepository[LifestyleBaselineResponse, Life
         return len(result.data) if result.data else 0
 
     def delete_for_user(self, user_id: UUID) -> int:
-        result = (
-            self._get_table()
-            .delete()
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._get_table().delete().eq("user_id", str(user_id)).execute()
         return len(result.data) if result.data else 0
 
     def delete_unlocked_for_user(self, user_id: UUID) -> int:
         result = (
-            self._get_table()
-            .delete()
-            .eq("user_id", str(user_id))
-            .eq("is_locked", False)
-            .execute()
+            self._get_table().delete().eq("user_id", str(user_id)).eq("is_locked", False).execute()
         )
         return len(result.data) if result.data else 0
 

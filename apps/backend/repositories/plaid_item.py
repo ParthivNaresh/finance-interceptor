@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -55,10 +55,7 @@ class PlaidItemRepository(BaseRepository[PlaidItemResponse, PlaidItemCreate]):
 
     def update_sync_cursor(self, record_id: UUID, cursor: str) -> dict[str, Any] | None:
         result = (
-            self._get_table()
-            .update({"sync_cursor": cursor})
-            .eq("id", str(record_id))
-            .execute()
+            self._get_table().update({"sync_cursor": cursor}).eq("id", str(record_id)).execute()
         )
         if not result.data:
             return None
@@ -67,7 +64,7 @@ class PlaidItemRepository(BaseRepository[PlaidItemResponse, PlaidItemCreate]):
     def update_last_sync(self, record_id: UUID) -> dict[str, Any] | None:
         result = (
             self._get_table()
-            .update({"last_successful_sync": datetime.now(timezone.utc).isoformat()})
+            .update({"last_successful_sync": datetime.now(UTC).isoformat()})
             .eq("id", str(record_id))
             .execute()
         )

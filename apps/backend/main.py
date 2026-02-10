@@ -106,9 +106,7 @@ def create_app() -> FastAPI:
     if production_errors:
         for error in production_errors:
             logger.error("application.config_error", error=error)
-        raise RuntimeError(
-            f"Production configuration errors: {'; '.join(production_errors)}"
-        )
+        raise RuntimeError(f"Production configuration errors: {'; '.join(production_errors)}")
 
     application = FastAPI(
         title="Finance Interceptor API",

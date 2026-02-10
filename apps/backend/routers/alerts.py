@@ -23,7 +23,9 @@ limits = get_rate_limits()
 
 CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
 AlertRepoDep = Annotated[AlertRepository, Depends(get_alert_repository)]
-RecurringStreamRepoDep = Annotated[RecurringStreamRepository, Depends(get_recurring_stream_repository)]
+RecurringStreamRepoDep = Annotated[
+    RecurringStreamRepository, Depends(get_recurring_stream_repository)
+]
 
 
 def _parse_datetime(value: str | datetime | None) -> datetime | None:
@@ -38,7 +40,9 @@ def _to_alert_response(alert: dict[str, Any]) -> AlertResponse:
     return AlertResponse(
         id=UUID(alert["id"]),
         user_id=UUID(alert["user_id"]),
-        recurring_stream_id=UUID(alert["recurring_stream_id"]) if alert.get("recurring_stream_id") else None,
+        recurring_stream_id=UUID(alert["recurring_stream_id"])
+        if alert.get("recurring_stream_id")
+        else None,
         alert_type=AlertType(alert["alert_type"]),
         severity=AlertSeverity(alert["severity"]),
         title=alert["title"],

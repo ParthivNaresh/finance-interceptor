@@ -79,9 +79,7 @@ class TransactionSyncService:
 
         for attempt in range(_MAX_PAGINATION_RETRIES):
             try:
-                return self._execute_sync(
-                    plaid_item_id, access_token, account_map, attempt, log
-                )
+                return self._execute_sync(plaid_item_id, access_token, account_map, attempt, log)
             except ApiException as e:
                 if self._is_mutation_error(e) and attempt < _MAX_PAGINATION_RETRIES - 1:
                     log.warning(

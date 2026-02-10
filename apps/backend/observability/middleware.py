@@ -12,14 +12,16 @@ from observability.logger import get_logger
 
 REQUEST_ID_HEADER: Final[str] = "X-Request-ID"
 
-_PATHS_TO_SKIP: Final[frozenset[str]] = frozenset({
-    "/health",
-    "/healthz",
-    "/ready",
-    "/readyz",
-    "/metrics",
-    "/favicon.ico",
-})
+_PATHS_TO_SKIP: Final[frozenset[str]] = frozenset(
+    {
+        "/health",
+        "/healthz",
+        "/ready",
+        "/readyz",
+        "/metrics",
+        "/favicon.ico",
+    }
+)
 
 logger = get_logger("http.access")
 

@@ -95,7 +95,8 @@ class SpendingAggregator:
             net_flow=total_inflow - total_outflow,
             total_inflow_excluding_transfers=total_inflow_excluding_transfers,
             total_outflow_excluding_transfers=total_outflow_excluding_transfers,
-            net_flow_excluding_transfers=total_inflow_excluding_transfers - total_outflow_excluding_transfers,
+            net_flow_excluding_transfers=total_inflow_excluding_transfers
+            - total_outflow_excluding_transfers,
         )
 
     def _compute_category_breakdown(
@@ -119,24 +120,27 @@ class SpendingAggregator:
             acc.total_amount += amount
             acc.transaction_count += 1
             acc.category_detailed = category_detailed
-            if amount > acc.largest_transaction:
-                acc.largest_transaction = amount
+            acc.largest_transaction = max(acc.largest_transaction, amount)
 
         result: list[CategorySpendingCreate] = []
         for category_primary, acc in category_data.items():
             avg = acc.total_amount / acc.transaction_count if acc.transaction_count > 0 else None
 
-            result.append(CategorySpendingCreate(
-                user_id=user_id,
-                period_type=period_type,
-                period_start=period_start,
-                category_primary=category_primary,
-                category_detailed=acc.category_detailed,
-                total_amount=acc.total_amount,
-                transaction_count=acc.transaction_count,
-                average_transaction=avg,
-                largest_transaction=acc.largest_transaction if acc.largest_transaction > 0 else None,
-            ))
+            result.append(
+                CategorySpendingCreate(
+                    user_id=user_id,
+                    period_type=period_type,
+                    period_start=period_start,
+                    category_primary=category_primary,
+                    category_detailed=acc.category_detailed,
+                    total_amount=acc.total_amount,
+                    transaction_count=acc.transaction_count,
+                    average_transaction=avg,
+                    largest_transaction=acc.largest_transaction
+                    if acc.largest_transaction > 0
+                    else None,
+                )
+            )
 
         return result
 
@@ -164,16 +168,18 @@ class SpendingAggregator:
         for merchant_name, acc in merchant_data.items():
             avg = acc.total_amount / acc.transaction_count if acc.transaction_count > 0 else None
 
-            result.append(MerchantSpendingCreate(
-                user_id=user_id,
-                period_type=period_type,
-                period_start=period_start,
-                merchant_name=merchant_name,
-                merchant_id=None,
-                total_amount=acc.total_amount,
-                transaction_count=acc.transaction_count,
-                average_transaction=avg,
-            ))
+            result.append(
+                MerchantSpendingCreate(
+                    user_id=user_id,
+                    period_type=period_type,
+                    period_start=period_start,
+                    merchant_name=merchant_name,
+                    merchant_id=None,
+                    total_amount=acc.total_amount,
+                    transaction_count=acc.transaction_count,
+                    average_transaction=avg,
+                )
+            )
 
         return result
 
@@ -189,7 +195,7 @@ class _SpendingTotals:
 
 
 class _CategoryAccumulator:
-    __slots__ = ("total_amount", "transaction_count", "category_detailed", "largest_transaction")
+    __slots__ = ("category_detailed", "largest_transaction", "total_amount", "transaction_count")
 
     def __init__(self) -> None:
         self.total_amount: Decimal = Decimal("0")

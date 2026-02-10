@@ -108,12 +108,7 @@ class SpendingPeriodRepository(BaseRepository[SpendingPeriodResponse, SpendingPe
         if not update_data:
             return self.get_by_id(record_id)
 
-        result = (
-            self._get_table()
-            .update(update_data)
-            .eq("id", str(record_id))
-            .execute()
-        )
+        result = self._get_table().update(update_data).eq("id", str(record_id)).execute()
         if not result.data:
             return None
         return dict(result.data[0])
@@ -121,9 +116,7 @@ class SpendingPeriodRepository(BaseRepository[SpendingPeriodResponse, SpendingPe
     def upsert(self, data: SpendingPeriodCreate) -> dict[str, Any]:
         dump = data.model_dump(mode="json")
         result = (
-            self._get_table()
-            .upsert(dump, on_conflict="user_id,period_type,period_start")
-            .execute()
+            self._get_table().upsert(dump, on_conflict="user_id,period_type,period_start").execute()
         )
         if not result.data:
             raise ValueError("Failed to upsert spending period")
@@ -135,9 +128,7 @@ class SpendingPeriodRepository(BaseRepository[SpendingPeriodResponse, SpendingPe
 
         data = [r.model_dump(mode="json") for r in records]
         result = (
-            self._get_table()
-            .upsert(data, on_conflict="user_id,period_type,period_start")
-            .execute()
+            self._get_table().upsert(data, on_conflict="user_id,period_type,period_start").execute()
         )
         return [dict(item) for item in result.data] if result.data else []
 

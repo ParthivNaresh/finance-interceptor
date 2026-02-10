@@ -237,21 +237,23 @@ class PlaidService:
         accounts = []
         for account in response.accounts:
             balances = account.balances
-            accounts.append({
-                "account_id": account.account_id,
-                "name": account.name,
-                "official_name": account.official_name,
-                "type": account.type.value if account.type else None,
-                "subtype": account.subtype.value if account.subtype else None,
-                "mask": account.mask,
-                "current_balance": (
-                    Decimal(str(balances.current)) if balances.current is not None else None
-                ),
-                "available_balance": (
-                    Decimal(str(balances.available)) if balances.available is not None else None
-                ),
-                "iso_currency_code": balances.iso_currency_code or "USD",
-            })
+            accounts.append(
+                {
+                    "account_id": account.account_id,
+                    "name": account.name,
+                    "official_name": account.official_name,
+                    "type": account.type.value if account.type else None,
+                    "subtype": account.subtype.value if account.subtype else None,
+                    "mask": account.mask,
+                    "current_balance": (
+                        Decimal(str(balances.current)) if balances.current is not None else None
+                    ),
+                    "available_balance": (
+                        Decimal(str(balances.available)) if balances.available is not None else None
+                    ),
+                    "iso_currency_code": balances.iso_currency_code or "USD",
+                }
+            )
 
         logger.debug(
             "plaid.accounts.fetched",
@@ -311,12 +313,10 @@ class PlaidService:
         response_dict = response.to_dict()
 
         inflow_streams = [
-            PlaidRecurringStream(stream)
-            for stream in response_dict.get("inflow_streams", [])
+            PlaidRecurringStream(stream) for stream in response_dict.get("inflow_streams", [])
         ]
         outflow_streams = [
-            PlaidRecurringStream(stream)
-            for stream in response_dict.get("outflow_streams", [])
+            PlaidRecurringStream(stream) for stream in response_dict.get("outflow_streams", [])
         ]
 
         logger.debug(

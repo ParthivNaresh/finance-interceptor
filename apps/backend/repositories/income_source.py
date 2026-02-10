@@ -19,11 +19,7 @@ class IncomeSourceRepository(BaseRepository):
         user_id: UUID,
         active_only: bool = True,
     ) -> list[dict[str, Any]]:
-        query = (
-            self._get_table()
-            .select("*")
-            .eq("user_id", str(user_id))
-        )
+        query = self._get_table().select("*").eq("user_id", str(user_id))
 
         if active_only:
             query = query.eq("is_active", True)
@@ -86,11 +82,7 @@ class IncomeSourceRepository(BaseRepository):
             "account_id": str(source.account_id) if source.account_id else None,
         }
 
-        result = (
-            self._get_table()
-            .upsert(data, on_conflict="user_id,source_name")
-            .execute()
-        )
+        result = self._get_table().upsert(data, on_conflict="user_id,source_name").execute()
         if not result.data:
             raise ValueError("Failed to upsert income source")
         return dict(result.data[0])
@@ -110,12 +102,7 @@ class IncomeSourceRepository(BaseRepository):
         return bool(result.data)
 
     def delete_for_user(self, user_id: UUID) -> int:
-        result = (
-            self._get_table()
-            .delete()
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._get_table().delete().eq("user_id", str(user_id)).execute()
         return len(result.data) if result.data else 0
 
     def count_for_user(
@@ -123,11 +110,7 @@ class IncomeSourceRepository(BaseRepository):
         user_id: UUID,
         active_only: bool = True,
     ) -> int:
-        query = (
-            self._get_table()
-            .select("id", count="exact")
-            .eq("user_id", str(user_id))
-        )
+        query = self._get_table().select("id", count="exact").eq("user_id", str(user_id))
 
         if active_only:
             query = query.eq("is_active", True)

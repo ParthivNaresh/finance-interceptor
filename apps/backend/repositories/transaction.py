@@ -93,11 +93,7 @@ class TransactionRepository(BaseRepository[TransactionResponse, TransactionCreat
         if "datetime" in dump:
             dump["datetime"] = dump.pop("datetime")
 
-        result = (
-            self._get_table()
-            .upsert(dump, on_conflict="transaction_id")
-            .execute()
-        )
+        result = self._get_table().upsert(dump, on_conflict="transaction_id").execute()
         if not result.data:
             raise ValueError("Failed to upsert transaction")
         return dict(result.data[0])
@@ -113,11 +109,7 @@ class TransactionRepository(BaseRepository[TransactionResponse, TransactionCreat
                 dump["datetime"] = dump.pop("datetime")
             data.append(dump)
 
-        result = (
-            self._get_table()
-            .upsert(data, on_conflict="transaction_id")
-            .execute()
-        )
+        result = self._get_table().upsert(data, on_conflict="transaction_id").execute()
         return [dict(item) for item in result.data] if result.data else []
 
     def update_by_transaction_id(
@@ -130,10 +122,7 @@ class TransactionRepository(BaseRepository[TransactionResponse, TransactionCreat
             return self.get_by_transaction_id(transaction_id)
 
         result = (
-            self._get_table()
-            .update(update_data)
-            .eq("transaction_id", transaction_id)
-            .execute()
+            self._get_table().update(update_data).eq("transaction_id", transaction_id).execute()
         )
         if not result.data:
             return None
@@ -147,12 +136,7 @@ class TransactionRepository(BaseRepository[TransactionResponse, TransactionCreat
         if not transaction_ids:
             return 0
 
-        result = (
-            self._get_table()
-            .delete()
-            .in_("transaction_id", transaction_ids)
-            .execute()
-        )
+        result = self._get_table().delete().in_("transaction_id", transaction_ids).execute()
         return len(result.data) if result.data else 0
 
     def get_by_transaction_ids(

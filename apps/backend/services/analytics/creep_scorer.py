@@ -60,7 +60,7 @@ class CreepScorer:
         baseline_repo: LifestyleBaselineRepository,
         creep_score_repo: LifestyleCreepScoreRepository,
         cash_flow_repo: CashFlowMetricsRepository,
-        spending_period_repo: "SpendingPeriodRepository",
+        spending_period_repo: SpendingPeriodRepository,
     ) -> None:
         self._category_spending_repo = category_spending_repo
         self._baseline_repo = baseline_repo
@@ -145,9 +145,7 @@ class CreepScorer:
             return None
 
         cash_flow = self._cash_flow_repo.get_by_user_and_period(user_id, period_start)
-        income_for_period = (
-            Decimal(str(cash_flow["total_income"])) if cash_flow else None
-        )
+        income_for_period = Decimal(str(cash_flow["total_income"])) if cash_flow else None
 
         total_baseline = Decimal("0")
         total_current = Decimal("0")
@@ -168,16 +166,20 @@ class CreepScorer:
                 percentage_change, seasonality.is_seasonal
             )
 
-            category_summaries.append(CategoryCreepSummary(
-                category_primary=category,
-                baseline_amount=baseline_amount,
-                current_amount=current_amount,
-                absolute_change=absolute_change,
-                percentage_change=percentage_change,
-                severity=severity,
-                is_seasonal=seasonality.is_seasonal,
-                seasonal_months=list(seasonality.seasonal_months) if seasonality.seasonal_months else None,
-            ))
+            category_summaries.append(
+                CategoryCreepSummary(
+                    category_primary=category,
+                    baseline_amount=baseline_amount,
+                    current_amount=current_amount,
+                    absolute_change=absolute_change,
+                    percentage_change=percentage_change,
+                    severity=severity,
+                    is_seasonal=seasonality.is_seasonal,
+                    seasonal_months=list(seasonality.seasonal_months)
+                    if seasonality.seasonal_months
+                    else None,
+                )
+            )
 
         overall_creep_percentage = self._calculate_overall_creep_percentage(
             total_baseline, total_current
@@ -185,9 +187,7 @@ class CreepScorer:
 
         overall_severity = self._calculate_overall_severity(category_summaries)
 
-        discretionary_ratio = self._calculate_discretionary_ratio(
-            total_current, income_for_period
-        )
+        discretionary_ratio = self._calculate_discretionary_ratio(total_current, income_for_period)
 
         top_creeping = sorted(
             [c for c in category_summaries if c.percentage_change > 0],
@@ -277,9 +277,7 @@ class CreepScorer:
         )
 
         pacing_percentage = (
-            (current_discretionary / target_amount) * 100
-            if target_amount > 0
-            else Decimal("0")
+            (current_discretionary / target_amount) * 100 if target_amount > 0 else Decimal("0")
         ).quantize(Decimal("0.01"))
 
         expected_pacing_percentage = (
@@ -403,26 +401,26 @@ class CreepScorer:
                 continue
 
             absolute_change = current_amount - baseline_amount
-            percentage_change = self._calculate_percentage_change(
-                baseline_amount, current_amount
-            )
+            percentage_change = self._calculate_percentage_change(baseline_amount, current_amount)
             creep_score = self._calculate_creep_score(percentage_change)
 
             period_data.total_baseline_discretionary += baseline_amount
             period_data.total_current_discretionary += current_amount
 
-            period_data.category_scores.append(LifestyleCreepScoreCreate(
-                user_id=user_id,
-                period_start=period_start,
-                category_primary=category,
-                baseline_amount=baseline_amount,
-                current_amount=current_amount,
-                absolute_change=absolute_change,
-                percentage_change=percentage_change,
-                creep_score=creep_score,
-                is_inflation_adjusted=False,
-                inflation_rate_used=None,
-            ))
+            period_data.category_scores.append(
+                LifestyleCreepScoreCreate(
+                    user_id=user_id,
+                    period_start=period_start,
+                    category_primary=category,
+                    baseline_amount=baseline_amount,
+                    current_amount=current_amount,
+                    absolute_change=absolute_change,
+                    percentage_change=percentage_change,
+                    creep_score=creep_score,
+                    is_inflation_adjusted=False,
+                    inflation_rate_used=None,
+                )
+            )
 
         return period_data
 
@@ -431,8 +429,7 @@ class CreepScorer:
         baselines: list[dict],
     ) -> dict[str, Decimal]:
         return {
-            b["category_primary"]: Decimal(str(b["baseline_monthly_amount"]))
-            for b in baselines
+            b["category_primary"]: Decimal(str(b["baseline_monthly_amount"])) for b in baselines
         }
 
     def _get_periods_to_compute(self, user_id: UUID, count: int) -> list[date]:
@@ -550,7 +547,6 @@ class CreepScorerContainer:
             from repositories.category_spending import get_category_spending_repository
             from repositories.lifestyle_baseline import get_lifestyle_baseline_repository
             from repositories.lifestyle_creep_score import get_lifestyle_creep_score_repository
-
             from repositories.spending_period import get_spending_period_repository
 
             cls._instance = CreepScorer(

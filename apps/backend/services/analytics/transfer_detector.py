@@ -4,20 +4,24 @@ from typing import Any
 
 
 class TransferDetector:
-    TRANSFER_CATEGORIES: frozenset[str] = frozenset({
-        "TRANSFER_IN",
-        "TRANSFER_OUT",
-        "TRANSFER_IN_ACCOUNT_TRANSFER",
-        "TRANSFER_OUT_ACCOUNT_TRANSFER",
-        "TRANSFER_IN_INTERNAL_ACCOUNT_TRANSFER",
-        "TRANSFER_OUT_INTERNAL_ACCOUNT_TRANSFER",
-        "BANK_FEES_ATM_FEES",
-    })
+    TRANSFER_CATEGORIES: frozenset[str] = frozenset(
+        {
+            "TRANSFER_IN",
+            "TRANSFER_OUT",
+            "TRANSFER_IN_ACCOUNT_TRANSFER",
+            "TRANSFER_OUT_ACCOUNT_TRANSFER",
+            "TRANSFER_IN_INTERNAL_ACCOUNT_TRANSFER",
+            "TRANSFER_OUT_INTERNAL_ACCOUNT_TRANSFER",
+            "BANK_FEES_ATM_FEES",
+        }
+    )
 
-    TRANSFER_PRIMARY_CATEGORIES: frozenset[str] = frozenset({
-        "TRANSFER_IN",
-        "TRANSFER_OUT",
-    })
+    TRANSFER_PRIMARY_CATEGORIES: frozenset[str] = frozenset(
+        {
+            "TRANSFER_IN",
+            "TRANSFER_OUT",
+        }
+    )
 
     TRANSFER_NAME_PATTERNS: tuple[str, ...] = (
         "transfer",
@@ -35,10 +39,7 @@ class TransferDetector:
         if category_primary and category_primary.upper() in self.TRANSFER_PRIMARY_CATEGORIES:
             return True
 
-        if category_detailed and category_detailed.upper() in self.TRANSFER_CATEGORIES:
-            return True
-
-        return False
+        return bool(category_detailed and category_detailed.upper() in self.TRANSFER_CATEGORIES)
 
     def is_likely_transfer(self, transaction: dict[str, Any]) -> bool:
         if self.is_internal_transfer(transaction):
@@ -65,10 +66,7 @@ class TransferDetector:
         self,
         transactions: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        return [
-            txn for txn in transactions
-            if not self.is_internal_transfer(txn)
-        ]
+        return [txn for txn in transactions if not self.is_internal_transfer(txn)]
 
     def partition_by_transfer(
         self,

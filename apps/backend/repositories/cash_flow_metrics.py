@@ -81,22 +81,13 @@ class CashFlowMetricsRepository(BaseRepository):
             ),
         }
 
-        result = (
-            self._get_table()
-            .upsert(data, on_conflict="user_id,period_start")
-            .execute()
-        )
+        result = self._get_table().upsert(data, on_conflict="user_id,period_start").execute()
         if not result.data:
             raise ValueError("Failed to upsert cash flow metrics")
         return dict(result.data[0])
 
     def delete_for_user(self, user_id: UUID) -> int:
-        result = (
-            self._get_table()
-            .delete()
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._get_table().delete().eq("user_id", str(user_id)).execute()
         return len(result.data) if result.data else 0
 
     def get_average_savings_rate(

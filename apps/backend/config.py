@@ -154,14 +154,10 @@ class Settings(BaseSettings):
                 errors.append("DEBUG must be False when PLAID_ENVIRONMENT=production")
 
             if not self.plaid_webhook_verification_enabled:
-                errors.append(
-                    "PLAID_WEBHOOK_VERIFICATION_ENABLED must be True in production"
-                )
+                errors.append("PLAID_WEBHOOK_VERIFICATION_ENABLED must be True in production")
 
             if not self.cors_allowed_origins:
-                errors.append(
-                    "CORS_ALLOWED_ORIGINS must be set when PLAID_ENVIRONMENT=production"
-                )
+                errors.append("CORS_ALLOWED_ORIGINS must be set when PLAID_ENVIRONMENT=production")
 
         return errors
 

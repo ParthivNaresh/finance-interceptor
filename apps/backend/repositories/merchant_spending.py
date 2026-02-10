@@ -4,7 +4,11 @@ from datetime import date as date_type
 from typing import Any
 from uuid import UUID
 
-from models.analytics import MerchantSpendingCreate, MerchantSpendingResponse, MerchantSpendingUpdate
+from models.analytics import (
+    MerchantSpendingCreate,
+    MerchantSpendingResponse,
+    MerchantSpendingUpdate,
+)
 from models.enums import PeriodType
 from repositories.base import BaseRepository
 from services.database import DatabaseService, get_database_service
@@ -116,12 +120,7 @@ class MerchantSpendingRepository(BaseRepository[MerchantSpendingResponse, Mercha
         if not update_data:
             return self.get_by_id(record_id)
 
-        result = (
-            self._get_table()
-            .update(update_data)
-            .eq("id", str(record_id))
-            .execute()
-        )
+        result = self._get_table().update(update_data).eq("id", str(record_id)).execute()
         if not result.data:
             return None
         return dict(result.data[0])
@@ -166,12 +165,7 @@ class MerchantSpendingRepository(BaseRepository[MerchantSpendingResponse, Mercha
         return len(result.data) if result.data else 0
 
     def delete_for_user(self, user_id: UUID) -> int:
-        result = (
-            self._get_table()
-            .delete()
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._get_table().delete().eq("user_id", str(user_id)).execute()
         return len(result.data) if result.data else 0
 
 

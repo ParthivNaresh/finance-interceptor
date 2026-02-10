@@ -67,15 +67,15 @@ class RecurringStreamRepository(BaseRepository[RecurringStreamResponse, Recurrin
         )
         return [dict(item) for item in result.data] if result.data else []
 
-    def get_upcoming(
-        self,
-        user_id: UUID,
-        days_ahead: int = 30
-    ) -> list[dict[str, Any]]:
+    def get_upcoming(self, user_id: UUID, days_ahead: int = 30) -> list[dict[str, Any]]:
         today = date.today()
-        end_date = date.today().replace(day=today.day + days_ahead) if days_ahead < 28 else date(
-            today.year, today.month + 1, today.day
-        ) if today.month < 12 else date(today.year + 1, 1, today.day)
+        end_date = (
+            date.today().replace(day=today.day + days_ahead)
+            if days_ahead < 28
+            else date(today.year, today.month + 1, today.day)
+            if today.month < 12
+            else date(today.year + 1, 1, today.day)
+        )
 
         result = (
             self._get_table()
@@ -95,12 +95,7 @@ class RecurringStreamRepository(BaseRepository[RecurringStreamResponse, Recurrin
         if not update_data:
             return self.get_by_id(stream_id)
 
-        result = (
-            self._get_table()
-            .update(update_data)
-            .eq("id", str(stream_id))
-            .execute()
-        )
+        result = self._get_table().update(update_data).eq("id", str(stream_id)).execute()
         if not result.data:
             return None
         return dict(result.data[0])
@@ -145,9 +140,7 @@ class RecurringStreamRepository(BaseRepository[RecurringStreamResponse, Recurrin
         return dict(result.data[0])
 
     def deactivate_missing(
-        self,
-        plaid_item_id: UUID,
-        active_stream_ids: set[str]
+        self, plaid_item_id: UUID, active_stream_ids: set[str]
     ) -> list[dict[str, Any]]:
         existing = self.get_by_plaid_item_id(plaid_item_id)
         deactivated = []
@@ -161,12 +154,7 @@ class RecurringStreamRepository(BaseRepository[RecurringStreamResponse, Recurrin
         return deactivated
 
     def delete_by_plaid_item_id(self, plaid_item_id: UUID) -> int:
-        result = (
-            self._get_table()
-            .delete()
-            .eq("plaid_item_id", str(plaid_item_id))
-            .execute()
-        )
+        result = self._get_table().delete().eq("plaid_item_id", str(plaid_item_id)).execute()
         return len(result.data) if result.data else 0
 
 

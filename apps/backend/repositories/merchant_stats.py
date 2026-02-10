@@ -95,12 +95,7 @@ class MerchantStatsRepository(BaseRepository[MerchantStatsResponse, MerchantStat
         return [dict(item) for item in result.data] if result.data else []
 
     def count_for_user(self, user_id: UUID) -> int:
-        result = (
-            self._get_table()
-            .select("id", count="exact")
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._get_table().select("id", count="exact").eq("user_id", str(user_id)).execute()
         return result.count if result.count is not None else 0
 
     def update(
@@ -112,23 +107,14 @@ class MerchantStatsRepository(BaseRepository[MerchantStatsResponse, MerchantStat
         if not update_data:
             return self.get_by_id(record_id)
 
-        result = (
-            self._get_table()
-            .update(update_data)
-            .eq("id", str(record_id))
-            .execute()
-        )
+        result = self._get_table().update(update_data).eq("id", str(record_id)).execute()
         if not result.data:
             return None
         return dict(result.data[0])
 
     def upsert(self, data: MerchantStatsCreate) -> dict[str, Any]:
         dump = data.model_dump(mode="json")
-        result = (
-            self._get_table()
-            .upsert(dump, on_conflict="user_id,merchant_name")
-            .execute()
-        )
+        result = self._get_table().upsert(dump, on_conflict="user_id,merchant_name").execute()
         if not result.data:
             raise ValueError("Failed to upsert merchant stats")
         return dict(result.data[0])
@@ -138,20 +124,11 @@ class MerchantStatsRepository(BaseRepository[MerchantStatsResponse, MerchantStat
             return []
 
         data = [r.model_dump(mode="json") for r in records]
-        result = (
-            self._get_table()
-            .upsert(data, on_conflict="user_id,merchant_name")
-            .execute()
-        )
+        result = self._get_table().upsert(data, on_conflict="user_id,merchant_name").execute()
         return [dict(item) for item in result.data] if result.data else []
 
     def delete_for_user(self, user_id: UUID) -> int:
-        result = (
-            self._get_table()
-            .delete()
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._get_table().delete().eq("user_id", str(user_id)).execute()
         return len(result.data) if result.data else 0
 
     def delete_by_merchant_name(

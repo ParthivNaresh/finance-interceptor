@@ -61,12 +61,7 @@ class AccountRepository(BaseRepository[AccountResponse, AccountCreate]):
         return dict(result.data[0])
 
     def deactivate(self, account_id: UUID) -> dict[str, Any] | None:
-        result = (
-            self._get_table()
-            .update({"is_active": False})
-            .eq("id", str(account_id))
-            .execute()
-        )
+        result = self._get_table().update({"is_active": False}).eq("id", str(account_id)).execute()
         if not result.data:
             return None
         return dict(result.data[0])

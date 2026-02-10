@@ -13,13 +13,11 @@ CATEGORY_SENSITIVITY_MAP: dict[str, PriceSensitivity] = {
     "GENERAL_SERVICES": PriceSensitivity.STRICT,
     "PERSONAL_CARE": PriceSensitivity.STRICT,
     "SUBSCRIPTION": PriceSensitivity.STRICT,
-
     "FOOD_AND_DRINK": PriceSensitivity.MODERATE,
     "TRANSPORTATION": PriceSensitivity.MODERATE,
     "MEDICAL": PriceSensitivity.MODERATE,
     "GENERAL_MERCHANDISE": PriceSensitivity.MODERATE,
     "GOVERNMENT_AND_NON_PROFIT": PriceSensitivity.MODERATE,
-
     "RENT_AND_UTILITIES": PriceSensitivity.FLEXIBLE,
     "HOME_IMPROVEMENT": PriceSensitivity.FLEXIBLE,
     "LOAN_PAYMENTS": PriceSensitivity.FLEXIBLE,

@@ -82,7 +82,9 @@ class SpendingComputationManager:
             self._computation_log_repo.mark_complete(
                 user_id=user_id,
                 computation_type=COMPUTATION_TYPE_SPENDING,
-                rows_affected=result.periods_computed + result.categories_computed + result.merchants_computed,
+                rows_affected=result.periods_computed
+                + result.categories_computed
+                + result.merchants_computed,
                 duration_ms=duration_ms,
             )
 
@@ -316,10 +318,7 @@ class SpendingComputationManager:
         if not existing:
             return True
 
-        if not existing.get("is_finalized", False):
-            return True
-
-        return False
+        return not existing.get("is_finalized", False)
 
     @staticmethod
     def _parse_date(value: str | date | None) -> date | None:

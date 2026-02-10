@@ -18,10 +18,12 @@ if TYPE_CHECKING:
 
 logger = get_logger("services.task_queue")
 
-_CANCELLABLE_STATUSES: frozenset[JobStatus] = frozenset({
-    JobStatus.queued,
-    JobStatus.deferred,
-})
+_CANCELLABLE_STATUSES: frozenset[JobStatus] = frozenset(
+    {
+        JobStatus.queued,
+        JobStatus.deferred,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)

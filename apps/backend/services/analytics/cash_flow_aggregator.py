@@ -259,7 +259,8 @@ class CashFlowAggregator:
             largest_amount = category_totals[largest_category]
 
         income_sources_in_period = sum(
-            1 for s in income_sources
+            1
+            for s in income_sources
             if s.confidence_score >= CONFIDENCE_THRESHOLD_AUTO_INCLUDE
             and s.first_date <= period_end
             and s.last_date >= period_start_bound

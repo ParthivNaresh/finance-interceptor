@@ -5,8 +5,8 @@ from services.recurring.alert_detection import (
 )
 from services.recurring.price_sensitivity import (
     CATEGORY_SENSITIVITY_MAP,
-    PriceSensitivity,
     SENSITIVITY_THRESHOLDS,
+    PriceSensitivity,
     calculate_change_percentage,
     get_price_sensitivity,
     get_threshold_for_category,
@@ -20,14 +20,14 @@ from services.recurring.sync_service import (
 )
 
 __all__ = [
+    "CATEGORY_SENSITIVITY_MAP",
+    "SENSITIVITY_THRESHOLDS",
     "AlertDetectionService",
     "AlertDetectionServiceContainer",
-    "CATEGORY_SENSITIVITY_MAP",
     "PriceSensitivity",
     "RecurringSyncError",
     "RecurringSyncService",
     "RecurringSyncServiceContainer",
-    "SENSITIVITY_THRESHOLDS",
     "calculate_change_percentage",
     "get_alert_detection_service",
     "get_price_sensitivity",

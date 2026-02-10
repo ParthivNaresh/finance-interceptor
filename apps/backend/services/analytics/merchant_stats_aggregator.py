@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from models.analytics import MerchantStatsCreate, MerchantStatsComputationResult
+from models.analytics import MerchantStatsComputationResult, MerchantStatsCreate
 from models.enums import ComputationStatus
 
 if TYPE_CHECKING:
@@ -229,8 +229,7 @@ class MerchantStatsAggregator:
 
         sorted_dates = sorted(dates)
         deltas = [
-            (sorted_dates[i + 1] - sorted_dates[i]).days
-            for i in range(len(sorted_dates) - 1)
+            (sorted_dates[i + 1] - sorted_dates[i]).days for i in range(len(sorted_dates) - 1)
         ]
 
         if not deltas:

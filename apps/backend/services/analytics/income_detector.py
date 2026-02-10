@@ -160,13 +160,15 @@ class IncomeDetector:
             txn_id = UUID(txn["id"]) if isinstance(txn.get("id"), str) else txn.get("id")
             account_id = self._parse_uuid(txn.get("account_id"))
 
-            income_transactions.append(IncomeTransaction(
-                transaction_id=txn_id,
-                amount=abs_amount,
-                transaction_date=txn_date,
-                source_name=source_name,
-                account_id=account_id,
-            ))
+            income_transactions.append(
+                IncomeTransaction(
+                    transaction_id=txn_id,
+                    amount=abs_amount,
+                    transaction_date=txn_date,
+                    source_name=source_name,
+                    account_id=account_id,
+                )
+            )
 
         return income_transactions
 
@@ -240,25 +242,21 @@ class IncomeDetector:
         if len(dates) < 2:
             return FrequencyType.UNKNOWN
 
-        deltas = [
-            (dates[i + 1] - dates[i]).days
-            for i in range(len(dates) - 1)
-        ]
-
+        deltas = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
         avg_days = sum(deltas) / len(deltas)
 
-        if avg_days <= 9:
-            return FrequencyType.WEEKLY
-        if avg_days <= 18:
-            return FrequencyType.BIWEEKLY
-        if avg_days <= 35:
-            return FrequencyType.MONTHLY
-        if avg_days <= 100:
-            return FrequencyType.QUARTERLY
-        if avg_days <= 200:
-            return FrequencyType.SEMI_ANNUALLY
-        if avg_days <= 400:
-            return FrequencyType.ANNUALLY
+        frequency_thresholds: tuple[tuple[int, FrequencyType], ...] = (
+            (9, FrequencyType.WEEKLY),
+            (18, FrequencyType.BIWEEKLY),
+            (35, FrequencyType.MONTHLY),
+            (100, FrequencyType.QUARTERLY),
+            (200, FrequencyType.SEMI_ANNUALLY),
+            (400, FrequencyType.ANNUALLY),
+        )
+
+        for threshold, frequency in frequency_thresholds:
+            if avg_days <= threshold:
+                return frequency
 
         return FrequencyType.IRREGULAR
 
@@ -325,10 +323,7 @@ class IncomeDetector:
         if len(dates) < 3:
             return Decimal("0.50")
 
-        deltas = [
-            (dates[i + 1] - dates[i]).days
-            for i in range(len(dates) - 1)
-        ]
+        deltas = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
 
         avg_delta = sum(deltas) / len(deltas)
         if avg_delta == 0:
@@ -384,9 +379,8 @@ class IncomeDetector:
 
     def _is_internal_transfer(self, txn: dict[str, Any]) -> bool:
         category_primary = txn.get("personal_finance_category_primary", "")
-        if category_primary and category_primary.upper() in ("TRANSFER_IN", "TRANSFER_OUT"):
-            return True
-        return False
+        transfer_categories = ("TRANSFER_IN", "TRANSFER_OUT")
+        return bool(category_primary and category_primary.upper() in transfer_categories)
 
     def _extract_source_name(self, txn: dict[str, Any]) -> str:
         return txn.get("merchant_name") or txn.get("name") or "Unknown Source"

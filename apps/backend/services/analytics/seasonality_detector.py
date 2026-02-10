@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-
 SEASONAL_CATEGORIES: dict[str, frozenset[int]] = {
     "TRAVEL": frozenset({6, 7, 8, 12}),
     "GENERAL_MERCHANDISE": frozenset({11, 12}),

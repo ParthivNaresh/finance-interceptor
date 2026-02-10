@@ -27,7 +27,9 @@ limiter = get_limiter()
 limits = get_rate_limits()
 
 CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
-RecurringStreamRepoDep = Annotated[RecurringStreamRepository, Depends(get_recurring_stream_repository)]
+RecurringStreamRepoDep = Annotated[
+    RecurringStreamRepository, Depends(get_recurring_stream_repository)
+]
 TransactionRepoDep = Annotated[TransactionRepository, Depends(get_transaction_repository)]
 RecurringSyncServiceDep = Annotated[RecurringSyncService, Depends(get_recurring_sync_service)]
 
@@ -45,8 +47,12 @@ def _to_stream_response(stream: dict) -> RecurringStreamResponse:
         category_primary=stream.get("category_primary"),
         category_detailed=stream.get("category_detailed"),
         frequency=FrequencyType(stream["frequency"]),
-        first_date=stream["first_date"] if isinstance(stream["first_date"], date) else date.fromisoformat(stream["first_date"]),
-        last_date=stream["last_date"] if isinstance(stream["last_date"], date) else date.fromisoformat(stream["last_date"]),
+        first_date=stream["first_date"]
+        if isinstance(stream["first_date"], date)
+        else date.fromisoformat(stream["first_date"]),
+        last_date=stream["last_date"]
+        if isinstance(stream["last_date"], date)
+        else date.fromisoformat(stream["last_date"]),
         predicted_next_date=_parse_date(stream.get("predicted_next_date")),
         average_amount=Decimal(str(stream["average_amount"])),
         last_amount=Decimal(str(stream["last_amount"])),
@@ -267,10 +273,7 @@ async def get_recurring_stream_transactions(
 
     transactions = [_to_transaction_response(txn) for txn in transactions_data]
 
-    total_spent = sum(
-        abs(Decimal(str(txn["amount"])))
-        for txn in transactions_data
-    )
+    total_spent = sum(abs(Decimal(str(txn["amount"]))) for txn in transactions_data)
 
     return RecurringStreamDetailResponse(
         stream=_to_stream_response(stream),

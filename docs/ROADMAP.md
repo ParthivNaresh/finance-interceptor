@@ -251,7 +251,11 @@ Pre-computed, rule-based analytics stored in Supabase. Provides structured insig
 
 ### 8.2 Performance
 - [ ] Database indexing optimization
-- [ ] API response caching
+- [ ] API response caching (finalized spending periods, locked baselines - immutable data)
+- [ ] JWT validation caching (short TTL, 30-60s to reduce Supabase round-trips)
+- [ ] Combined dashboard endpoint (reduce 6 parallel fetches on Insights screen)
+- [ ] Fix N+1 query in accounts listing (batch fetch accounts for all plaid_items)
+- [ ] Pagination for analytics endpoints (currently using limit=10000 fetch-all pattern)
 - [x] Background job queue (ARQ + Redis)
 - [x] Analytics computation debouncing (30s delay, prevents duplicate work)
 - [ ] Analytics computation scheduling

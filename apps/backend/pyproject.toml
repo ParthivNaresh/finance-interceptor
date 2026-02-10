@@ -28,6 +28,7 @@ dev = [
     "rich>=13.0.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "pytest-cov>=6.0.0",
 ]
 
 [build-system]
@@ -66,7 +67,10 @@ select = [
 ignore = [
     "PLR0913",
     "PLR2004",
+    "PLR0915",
     "ARG001",
+    "PLC0415",
+    "B008",
 ]
 
 [tool.ruff.lint.isort]
@@ -96,3 +100,27 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = ["plaid.*", "supabase.*", "gotrue.*", "structlog.*", "arq.*", "slowapi.*", "limits.*", "jwt.*", "redis.*", "argon2.*"]
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-v"
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    ".venv/*",
+    "__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+    "pass",
+    "\\.\\.\\.",
+]

@@ -4,7 +4,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from errors import ExternalServiceError, InvalidRequestError
-
 from middleware.auth import get_current_user
 from middleware.rate_limit import get_limiter, get_rate_limits
 from models.auth import AuthenticatedUser
@@ -63,7 +62,7 @@ async def create_link_token(
     "/exchange-token",
     response_model=ExchangeTokenResponse,
     summary="Exchange a public token for an access token",
-    description="Exchanges the public token from Plaid Link, stores credentials securely, and returns connected accounts",
+    description="Exchanges the public token from Plaid Link and stores credentials securely",
 )
 @limiter.limit(limits.plaid)
 async def exchange_public_token(

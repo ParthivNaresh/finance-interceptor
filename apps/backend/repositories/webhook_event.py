@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -48,7 +48,7 @@ class WebhookEventRepository(BaseRepository[WebhookEventResponse, WebhookEventCr
         update_data: dict[str, Any] = {"status": status.value}
 
         if status == WebhookEventStatus.COMPLETED:
-            update_data["processed_at"] = datetime.now(timezone.utc).isoformat()
+            update_data["processed_at"] = datetime.now(UTC).isoformat()
 
         if error_message is not None:
             update_data["error_message"] = error_message
@@ -64,7 +64,9 @@ class WebhookEventRepository(BaseRepository[WebhookEventResponse, WebhookEventCr
             return None
 
         new_count = current.get("retry_count", 0) + 1
-        result = self._get_table().update({"retry_count": new_count}).eq("id", str(event_id)).execute()
+        result = (
+            self._get_table().update({"retry_count": new_count}).eq("id", str(event_id)).execute()
+        )
         if not result.data:
             return None
         return dict(result.data[0])

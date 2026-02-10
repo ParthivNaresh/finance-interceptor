@@ -44,12 +44,13 @@ class AlertDetectionService:
             if price_alert:
                 alerts.append(price_alert)
 
-        if existing_status != StreamStatus.TOMBSTONED:
-            if updated_status_str == "TOMBSTONED" or not updated.is_active:
-                if existing.get("is_active", True):
-                    cancelled_alert = self._create_cancelled_alert(user_id, existing, stream_id)
-                    if cancelled_alert:
-                        alerts.append(cancelled_alert)
+        is_becoming_inactive = updated_status_str == "TOMBSTONED" or not updated.is_active
+        was_active = existing.get("is_active", True)
+
+        if existing_status != StreamStatus.TOMBSTONED and is_becoming_inactive and was_active:
+            cancelled_alert = self._create_cancelled_alert(user_id, existing, stream_id)
+            if cancelled_alert:
+                alerts.append(cancelled_alert)
 
         return alerts
 
@@ -78,7 +79,9 @@ class AlertDetectionService:
             return None
 
         if stream_id:
-            alert_type = AlertType.PRICE_INCREASE if change_percentage > 0 else AlertType.PRICE_DECREASE
+            alert_type = (
+                AlertType.PRICE_INCREASE if change_percentage > 0 else AlertType.PRICE_DECREASE
+            )
             if self._alert_repo.exists_for_stream_and_type(stream_id, alert_type, since_hours=168):
                 return None
 
@@ -89,9 +92,7 @@ class AlertDetectionService:
 
         direction = "increased" if change_percentage > 0 else "decreased"
         title = f"{merchant} price {direction}"
-        message = self._format_price_change_message(
-            merchant, previous, current, change_percentage
-        )
+        message = self._format_price_change_message(merchant, previous, current, change_percentage)
 
         return AlertCreate(
             user_id=user_id,
@@ -124,13 +125,18 @@ class AlertDetectionService:
         merchant = stream.merchant_name or stream.description
         frequency = stream.frequency.lower().replace("_", " ")
 
+        message = (
+            f"I noticed a new {frequency} charge for '{merchant}' "
+            f"of ${stream.last_amount:.2f}. Should I add this to your watch list?"
+        )
+
         return AlertCreate(
             user_id=user_id,
             recurring_stream_id=stream_id,
             alert_type=AlertType.NEW_SUBSCRIPTION,
             severity=AlertSeverity.LOW,
             title="New recurring charge detected",
-            message=f"I noticed a new {frequency} charge for '{merchant}' of ${stream.last_amount:.2f}. Should I add this to your watch list?",
+            message=message,
             data={
                 "merchant_name": merchant,
                 "description": stream.description,
@@ -155,13 +161,18 @@ class AlertDetectionService:
         last_date = existing.get("last_date", "unknown")
         predicted_next = existing.get("predicted_next_date")
 
+        message = (
+            f"We haven't seen a charge from {merchant} since {last_date}. "
+            "Did you mean to cancel this?"
+        )
+
         return AlertCreate(
             user_id=user_id,
             recurring_stream_id=stream_id,
             alert_type=AlertType.CANCELLED_SUBSCRIPTION,
             severity=AlertSeverity.MEDIUM,
             title="Subscription may have ended",
-            message=f"We haven't seen a charge from {merchant} since {last_date}. Did you mean to cancel this?",
+            message=message,
             data={
                 "merchant_name": merchant,
                 "last_date": str(last_date),

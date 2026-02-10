@@ -49,7 +49,9 @@ class PlaidWebhookRequest(BaseModel):
     item_id: str = Field(description="Plaid item ID this webhook relates to")
     error: dict[str, Any] | None = Field(default=None, description="Error details if applicable")
     new_transactions: int | None = Field(default=None, description="Number of new transactions")
-    removed_transactions: list[str] | None = Field(default=None, description="Removed transaction IDs")
+    removed_transactions: list[str] | None = Field(
+        default=None, description="Removed transaction IDs"
+    )
     consent_expiration_time: str | None = Field(default=None, description="When consent expires")
 
 

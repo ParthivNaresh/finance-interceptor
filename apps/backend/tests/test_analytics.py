@@ -15,9 +15,7 @@ class TestBaselineComputation:
         assert baseline_user.baselines is not None
         assert baseline_user.baselines.baselines_computed >= 5
 
-    def test_baseline_categories_are_discretionary(
-        self, baseline_user: ScenarioResult
-    ) -> None:
+    def test_baseline_categories_are_discretionary(self, baseline_user: ScenarioResult) -> None:
         baselines = baseline_user.get_baselines()
         discretionary_categories = {
             "FOOD_AND_DRINK",
@@ -39,19 +37,13 @@ class TestBaselineComputation:
 
 
 class TestStableSpending:
-    def test_stable_user_has_high_stability_score(
-        self, stable_user: ScenarioResult
-    ) -> None:
+    def test_stable_user_has_high_stability_score(self, stable_user: ScenarioResult) -> None:
         assert stable_user.stability_score == 100
 
-    def test_stable_user_has_no_creep_severity(
-        self, stable_user: ScenarioResult
-    ) -> None:
+    def test_stable_user_has_no_creep_severity(self, stable_user: ScenarioResult) -> None:
         assert stable_user.creep_severity == "none"
 
-    def test_stable_user_spending_is_consistent(
-        self, stable_user: ScenarioResult
-    ) -> None:
+    def test_stable_user_spending_is_consistent(self, stable_user: ScenarioResult) -> None:
         trend = stable_user.get_category_trend("FOOD_AND_DRINK")
         assert len(trend) >= 3
 
@@ -67,9 +59,7 @@ class TestLifestyleCreepDetection:
     def test_creep_user_has_baselines(self, creep_user: ScenarioResult) -> None:
         assert creep_user.has_baselines
 
-    def test_creep_is_visible_in_spending_trend(
-        self, creep_user: ScenarioResult
-    ) -> None:
+    def test_creep_is_visible_in_spending_trend(self, creep_user: ScenarioResult) -> None:
         trend = creep_user.get_category_trend("FOOD_AND_DRINK")
         assert len(trend) >= 6
 
@@ -78,9 +68,7 @@ class TestLifestyleCreepDetection:
 
         assert recent_avg > baseline_avg
 
-    def test_creep_percentage_matches_expected(
-        self, creep_user: ScenarioResult
-    ) -> None:
+    def test_creep_percentage_matches_expected(self, creep_user: ScenarioResult) -> None:
         trend = creep_user.get_category_trend("FOOD_AND_DRINK")
 
         baseline_avg = sum(t[1] for t in trend[:3]) / 3

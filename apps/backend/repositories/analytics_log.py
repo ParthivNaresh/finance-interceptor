@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from datetime import date as date_type
-from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -76,12 +76,7 @@ class AnalyticsComputationLogRepository(
         if not update_data:
             return self.get_by_id(record_id)
 
-        result = (
-            self._get_table()
-            .update(update_data)
-            .eq("id", str(record_id))
-            .execute()
-        )
+        result = self._get_table().update(update_data).eq("id", str(record_id)).execute()
         if not result.data:
             return None
         return dict(result.data[0])
@@ -101,7 +96,7 @@ class AnalyticsComputationLogRepository(
             "user_id": str(user_id),
             "computation_type": computation_type,
             "status": status.value,
-            "last_computed_at": datetime.now(timezone.utc).isoformat(),
+            "last_computed_at": datetime.now(UTC).isoformat(),
         }
 
         if last_transaction_date is not None:
@@ -115,11 +110,7 @@ class AnalyticsComputationLogRepository(
         if error_message is not None:
             data["error_message"] = error_message
 
-        result = (
-            self._get_table()
-            .upsert(data, on_conflict="user_id,computation_type")
-            .execute()
-        )
+        result = self._get_table().upsert(data, on_conflict="user_id,computation_type").execute()
         if not result.data:
             raise ValueError("Failed to upsert analytics computation log")
         return dict(result.data[0])
@@ -171,12 +162,7 @@ class AnalyticsComputationLogRepository(
         )
 
     def delete_for_user(self, user_id: UUID) -> int:
-        result = (
-            self._get_table()
-            .delete()
-            .eq("user_id", str(user_id))
-            .execute()
-        )
+        result = self._get_table().delete().eq("user_id", str(user_id)).execute()
         return len(result.data) if result.data else 0
 
 

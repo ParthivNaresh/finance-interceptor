@@ -1,4 +1,8 @@
-from repositories.account import AccountRepository, AccountRepositoryContainer, get_account_repository
+from repositories.account import (
+    AccountRepository,
+    AccountRepositoryContainer,
+    get_account_repository,
+)
 from repositories.alert import AlertRepository, AlertRepositoryContainer, get_alert_repository
 from repositories.analytics_log import (
     AnalyticsComputationLogRepository,
@@ -30,7 +34,11 @@ from repositories.merchant_stats import (
     MerchantStatsRepositoryContainer,
     get_merchant_stats_repository,
 )
-from repositories.plaid_item import PlaidItemRepository, PlaidItemRepositoryContainer, get_plaid_item_repository
+from repositories.plaid_item import (
+    PlaidItemRepository,
+    PlaidItemRepositoryContainer,
+    get_plaid_item_repository,
+)
 from repositories.recurring_stream import (
     RecurringStreamRepository,
     RecurringStreamRepositoryContainer,

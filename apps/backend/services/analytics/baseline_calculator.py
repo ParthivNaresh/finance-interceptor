@@ -86,7 +86,7 @@ class BaselineCalculator:
                     baseline_period_start=None,
                     baseline_period_end=None,
                     computation_time_ms=duration_ms,
-                    error_message=f"Insufficient data. Need at least {MINIMUM_BASELINE_MONTHS} months.",
+                    error_message=f"Insufficient data. Need {MINIMUM_BASELINE_MONTHS}+ months.",
                 )
 
             period_start, period_end, months_count = baseline_period
@@ -195,7 +195,8 @@ class BaselineCalculator:
             )
 
             relevant_records = [
-                r for r in history
+                r
+                for r in history
                 if period_start <= date.fromisoformat(str(r["period_start"])) <= period_end
             ]
 
@@ -210,14 +211,16 @@ class BaselineCalculator:
             first_period = min(period_dates)
             last_period = max(period_dates)
 
-            category_data.append(CategoryBaselineData(
-                category_primary=category,
-                total_amount=total_amount,
-                total_transactions=total_transactions,
-                months_with_data=months_with_data,
-                first_period=first_period,
-                last_period=last_period,
-            ))
+            category_data.append(
+                CategoryBaselineData(
+                    category_primary=category,
+                    total_amount=total_amount,
+                    total_transactions=total_transactions,
+                    months_with_data=months_with_data,
+                    first_period=first_period,
+                    last_period=last_period,
+                )
+            )
 
         return category_data
 
@@ -226,7 +229,8 @@ class BaselineCalculator:
         category_data: list[CategoryBaselineData],
     ) -> list[CategoryBaselineData]:
         return [
-            data for data in category_data
+            data
+            for data in category_data
             if SpendingCategory.is_discretionary(data.category_primary)
             and data.total_transactions >= MINIMUM_TRANSACTIONS_PER_CATEGORY
         ]
@@ -244,18 +248,20 @@ class BaselineCalculator:
         for data in category_data:
             monthly_average = data.total_amount / data.months_with_data
 
-            baselines.append(LifestyleBaselineCreate(
-                user_id=user_id,
-                category_primary=data.category_primary,
-                baseline_type=BaselineType.ROLLING_3MO,
-                baseline_monthly_amount=monthly_average.quantize(Decimal("0.01")),
-                baseline_transaction_count=data.total_transactions,
-                baseline_period_start=period_start,
-                baseline_period_end=period_end,
-                baseline_months_count=months_count,
-                seasonal_adjustment_factor=None,
-                is_locked=False,
-            ))
+            baselines.append(
+                LifestyleBaselineCreate(
+                    user_id=user_id,
+                    category_primary=data.category_primary,
+                    baseline_type=BaselineType.ROLLING_3MO,
+                    baseline_monthly_amount=monthly_average.quantize(Decimal("0.01")),
+                    baseline_transaction_count=data.total_transactions,
+                    baseline_period_start=period_start,
+                    baseline_period_end=period_end,
+                    baseline_months_count=months_count,
+                    seasonal_adjustment_factor=None,
+                    is_locked=False,
+                )
+            )
 
         return baselines
 
