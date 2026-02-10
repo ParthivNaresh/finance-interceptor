@@ -64,9 +64,7 @@ class AnalyticsCache:
         today = date.today()
         if period_start.year == today.year and period_start.month == today.month:
             return self._current_ttl
-        months_ago = (today.year * 12 + today.month) - (
-            period_start.year * 12 + period_start.month
-        )
+        months_ago = (today.year * 12 + today.month) - (period_start.year * 12 + period_start.month)
         if months_ago == 1:
             return self._historical_ttl
         return self._finalized_ttl
@@ -93,9 +91,7 @@ class AnalyticsCache:
     def get_spending_list(
         self, user_id: UUID, period_type: str, periods: int
     ) -> SpendingSummaryListResponse | None:
-        raw = self._cache.get(
-            self._key(user_id, "spending", "list", period_type, str(periods))
-        )
+        raw = self._cache.get(self._key(user_id, "spending", "list", period_type, str(periods)))
         if raw is None:
             return None
         try:
@@ -141,9 +137,7 @@ class AnalyticsCache:
         self, user_id: UUID, period_type: str, period_start: date, limit: int
     ) -> MerchantBreakdownResponse | None:
         raw = self._cache.get(
-            self._key(
-                user_id, "spending", "merchants", period_type, str(period_start), str(limit)
-            )
+            self._key(user_id, "spending", "merchants", period_type, str(period_start), str(limit))
         )
         if raw is None:
             return None
@@ -171,9 +165,7 @@ class AnalyticsCache:
     def get_merchant_stats_top(
         self, user_id: UUID, sort_by: str, limit: int
     ) -> MerchantStatsListResponse | None:
-        raw = self._cache.get(
-            self._key(user_id, "merchant_stats", "top", sort_by, str(limit))
-        )
+        raw = self._cache.get(self._key(user_id, "merchant_stats", "top", sort_by, str(limit)))
         if raw is None:
             return None
         try:
@@ -214,9 +206,7 @@ class AnalyticsCache:
     def get_recurring_merchants(
         self, user_id: UUID, limit: int
     ) -> MerchantStatsListResponse | None:
-        raw = self._cache.get(
-            self._key(user_id, "merchant_stats", "recurring", str(limit))
-        )
+        raw = self._cache.get(self._key(user_id, "merchant_stats", "recurring", str(limit)))
         if raw is None:
             return None
         try:
@@ -241,15 +231,11 @@ class AnalyticsCache:
         except Exception:
             return None
 
-    def set_cashflow_current(
-        self, user_id: UUID, response: CashFlowMetricsResponse
-    ) -> bool:
+    def set_cashflow_current(self, user_id: UUID, response: CashFlowMetricsResponse) -> bool:
         key = self._key(user_id, "cashflow", "current")
         return self._cache.set(key, response.model_dump_json().encode(), self._current_ttl)
 
-    def get_cashflow_list(
-        self, user_id: UUID, periods: int
-    ) -> CashFlowMetricsListResponse | None:
+    def get_cashflow_list(self, user_id: UUID, periods: int) -> CashFlowMetricsListResponse | None:
         raw = self._cache.get(self._key(user_id, "cashflow", "list", str(periods)))
         if raw is None:
             return None
@@ -267,9 +253,7 @@ class AnalyticsCache:
     def get_income_sources(
         self, user_id: UUID, active_only: bool
     ) -> IncomeSourceListResponse | None:
-        raw = self._cache.get(
-            self._key(user_id, "income_sources", str(active_only).lower())
-        )
+        raw = self._cache.get(self._key(user_id, "income_sources", str(active_only).lower()))
         if raw is None:
             return None
         try:
@@ -327,12 +311,8 @@ class AnalyticsCache:
         ttl = self._baselines_locked_ttl if is_locked else self._baselines_ttl
         return self._cache.set(key, response.model_dump_json().encode(), ttl)
 
-    def get_creep_summary(
-        self, user_id: UUID, period_start: date
-    ) -> LifestyleCreepSummary | None:
-        raw = self._cache.get(
-            self._key(user_id, "creep", "summary", str(period_start))
-        )
+    def get_creep_summary(self, user_id: UUID, period_start: date) -> LifestyleCreepSummary | None:
+        raw = self._cache.get(self._key(user_id, "creep", "summary", str(period_start)))
         if raw is None:
             return None
         try:
@@ -346,9 +326,7 @@ class AnalyticsCache:
         key = self._key(user_id, "creep", "summary", str(period_start))
         return self._cache.set(key, response.model_dump_json().encode(), self._creep_ttl)
 
-    def get_creep_history(
-        self, user_id: UUID, periods: int
-    ) -> LifestyleCreepListResponse | None:
+    def get_creep_history(self, user_id: UUID, periods: int) -> LifestyleCreepListResponse | None:
         raw = self._cache.get(self._key(user_id, "creep", "history", str(periods)))
         if raw is None:
             return None
@@ -380,9 +358,7 @@ class AnalyticsCache:
     def invalidate_cashflow_for_user(self, user_id: UUID) -> int:
         pattern = self._cache._build_key(self._DOMAIN, str(user_id), "cashflow", "*")
         count = self._cache.delete_pattern(pattern)
-        income_pattern = self._cache._build_key(
-            self._DOMAIN, str(user_id), "income_sources", "*"
-        )
+        income_pattern = self._cache._build_key(self._DOMAIN, str(user_id), "income_sources", "*")
         count += self._cache.delete_pattern(income_pattern)
         return count
 

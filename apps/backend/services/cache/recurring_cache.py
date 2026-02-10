@@ -37,9 +37,7 @@ class RecurringCache:
         key = self._key(user_id, "list", str(active_only).lower())
         return self._cache.set(key, response.model_dump_json().encode(), self._ttl)
 
-    def get_upcoming_bills(
-        self, user_id: UUID, days: int
-    ) -> UpcomingBillsListResponse | None:
+    def get_upcoming_bills(self, user_id: UUID, days: int) -> UpcomingBillsListResponse | None:
         raw = self._cache.get(self._key(user_id, "upcoming", str(days)))
         if raw is None:
             return None
