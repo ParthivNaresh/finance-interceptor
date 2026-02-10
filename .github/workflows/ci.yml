@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: just backend-sync-locked
 
+      - name: Install testing framework
+        run: just backend-install-testing
+
       - name: Ruff lint check
         run: just backend-lint
 
