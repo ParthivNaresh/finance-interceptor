@@ -1,8 +1,8 @@
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 
-class PriceSensitivity(str, Enum):
+class PriceSensitivity(StrEnum):
     STRICT = "strict"
     MODERATE = "moderate"
     FLEXIBLE = "flexible"

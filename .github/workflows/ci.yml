@@ -18,53 +18,36 @@ jobs:
   backend-lint:
     name: Backend Lint & Typecheck
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/backend
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-          cache-dependency-glob: "apps/backend/pyproject.toml"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+          cache-dependency-glob: "apps/backend/uv.lock"
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-          uv venv
-          uv pip install -e ".[dev]"
+        run: just backend-sync-locked
 
       - name: Ruff lint check
-        run: |
-          source .venv/bin/activate
-          ruff check .
+        run: just backend-lint
 
       - name: Ruff format check
-        run: |
-          source .venv/bin/activate
-          ruff format --check .
+        run: just backend-format-check
 
       - name: Mypy typecheck
-        run: |
-          source .venv/bin/activate
-          mypy .
+        run: just backend-typecheck
 
   mobile-lint:
     name: Mobile Lint & Typecheck
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v3
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
@@ -72,22 +55,18 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: ESLint
-        working-directory: apps/mobile
-        run: bun run lint
+        run: just mobile-lint
 
       - name: TypeScript typecheck
-        working-directory: apps/mobile
-        run: bun run typecheck
+        run: just mobile-typecheck
 
   docs-build:
     name: Docs Build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v3
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -95,7 +74,7 @@ jobs:
         run: pip install mkdocs-material
 
       - name: Build docs
-        run: mkdocs build --strict
+        run: just docs-build
 
   # ============================================================================
   # STAGE 2: Backend Tests (depends on all Stage 1 jobs)
@@ -109,9 +88,6 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
-    defaults:
-      run:
-        working-directory: apps/backend
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -123,46 +99,24 @@ jobs:
       TASK_QUEUE_ENABLED: "false"
       RATE_LIMIT_ENABLED: "false"
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-          cache-dependency-glob: |
-            apps/backend/pyproject.toml
-            apps/testing/pyproject.toml
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+          cache-dependency-glob: "apps/backend/uv.lock"
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install backend dependencies
-        run: |
-          uv venv
-          uv pip install -e ".[dev]"
+        run: just backend-sync-locked
 
       - name: Install testing framework
-        run: |
-          source .venv/bin/activate
-          uv pip install -e ../testing/
-
-      - name: Set SSL certificate path
-        run: |
-          source .venv/bin/activate
-          echo "SSL_CERT_FILE=$(python -c 'import certifi; print(certifi.where())')" >> "$GITHUB_ENV"
-          echo "REQUESTS_CA_BUNDLE=$(python -c 'import certifi; print(certifi.where())')" >> "$GITHUB_ENV"
+        run: just backend-install-testing
 
       - name: Run tests with coverage
-        run: |
-          source .venv/bin/activate
-          pytest tests/ \
-            --cov=. \
-            --cov-report=xml:coverage.xml \
-            --cov-report=term-missing \
-            -v
+        run: just backend-test --cov=. --cov-report=xml:coverage.xml --cov-report=term-missing -v
 
       - name: Upload coverage report
         if: matrix.python-version == '3.12' && always()
@@ -182,8 +136,7 @@ jobs:
     needs: [backend-test]
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 

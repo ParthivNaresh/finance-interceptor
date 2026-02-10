@@ -4,7 +4,16 @@
       "Bash(grep:*)",
       "Bash(wc:*)",
       "Bash(find:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(source:*)",
+      "Bash(python3:*)",
+      "WebSearch",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:docs.astral.sh)",
+      "Bash(uv version:*)",
+      "Bash(uv --version:*)",
+      "Bash(uv lock:*)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }
