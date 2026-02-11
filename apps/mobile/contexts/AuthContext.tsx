@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -39,6 +40,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const subscription = onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       setUser(newSession?.user ?? null);
+      if (newSession?.user) {
+        Sentry.setUser({ id: newSession.user.id, email: newSession.user.email ?? undefined });
+      } else {
+        Sentry.setUser(null);
+      }
     });
 
     return () => {
@@ -51,6 +57,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await supabaseSignIn({ email, password });
       setSession(response.session);
       setUser(response.user);
+      if (response.user) {
+        Sentry.setUser({ id: response.user.id, email: response.user.email ?? undefined });
+      }
     } catch (error) {
       const authError = error as AuthError;
       throw new Error(authError.message);
@@ -62,6 +71,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await supabaseSignUp({ email, password });
       setSession(response.session);
       setUser(response.user);
+      if (response.user) {
+        Sentry.setUser({ id: response.user.id, email: response.user.email ?? undefined });
+      }
     } catch (error) {
       const authError = error as AuthError;
       throw new Error(authError.message);
@@ -73,6 +85,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await supabaseSignOut();
       setSession(null);
       setUser(null);
+      Sentry.setUser(null);
     } catch (error) {
       const authError = error as AuthError;
       throw new Error(authError.message);

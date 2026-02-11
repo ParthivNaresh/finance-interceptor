@@ -6,6 +6,7 @@ export interface AppConfig {
   appScheme: string;
   supabaseUrl: string;
   supabaseAnonKey: string;
+  sentryDsn: string;
 }
 
 function getApiBaseUrl(): string {
@@ -52,6 +53,7 @@ export const config: AppConfig = {
   appScheme: 'financeinterceptor',
   supabaseUrl: getSupabaseUrl(),
   supabaseAnonKey: getSupabaseAnonKey(),
+  sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
 };
 
 validateConfig(config);

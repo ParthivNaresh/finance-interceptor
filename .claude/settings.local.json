@@ -31,7 +31,13 @@
       "Bash(docker run:*)",
       "Bash(docker rmi:*)",
       "Bash(docker rm:*)",
-      "Bash(docker container prune:*)"
+      "Bash(docker container prune:*)",
+      "WebFetch(domain:docs.expo.dev)",
+      "WebFetch(domain:docs.sentry.io)",
+      "Bash(npx expo install:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx tsc:*)",
+      "Bash(.venv/bin/mypy:*)"
     ]
   }
 }

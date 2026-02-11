@@ -270,13 +270,14 @@ Pre-computed, rule-based analytics stored in Supabase. Provides structured insig
 - [x] Request logging middleware (correlation IDs, timing, status)
 - [x] PII scrubbing in logs
 - [x] Third-party log integration (uvicorn, httpx, supabase)
-- [ ] Error tracking (Sentry)
+- [x] Error tracking (Sentry — backend in main.py/workers, mobile via @sentry/react-native)
+- [x] Cache monitoring (`GET /health/cache` — hit/miss counters per domain, hit rates, Redis availability)
 - [ ] APM (Application Performance Monitoring)
 
 ### 8.4 Deployment
-- [ ] CI/CD pipeline
+- [x] CI/CD pipeline (GitHub Actions: lint + tests on Python 3.11/3.12 + SonarCloud)
 - [ ] Staging environment
-- [ ] Production infrastructure
+- [x] Production infrastructure (Render blueprint: API, worker, Redis, secrets)
 
 **Deliverable:** Production-ready application.
 
@@ -308,4 +309,4 @@ Plaid's Investments product uses a separate API with a different schema. Would r
 | Phase 5 - Analytics Engine | 🔄 In Progress (5.6 done) |
 | Phase 6 - Push Notifications | Not Started |
 | Phase 7 - Agentic | Not Started |
-| Phase 8 - Production | Not Started |
+| Phase 8 - Production | 🔄 In Progress (CI/CD, Sentry, Render done) |

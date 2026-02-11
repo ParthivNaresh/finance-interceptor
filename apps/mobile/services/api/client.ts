@@ -1,3 +1,5 @@
+import * as Sentry from '@sentry/react-native';
+
 import type { ApiError } from '@/types/api';
 import { config } from '@/config';
 
@@ -58,6 +60,11 @@ export class ApiClient {
     });
 
     if (!response.ok) {
+      Sentry.addBreadcrumb({
+        category: 'api',
+        message: `${method} ${endpoint} → ${response.status}`,
+        level: response.status >= 500 ? 'error' : 'warning',
+      });
       let errorMessage = `HTTP ${response.status}`;
       try {
         const error = (await response.json()) as ApiError;
