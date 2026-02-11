@@ -20,6 +20,11 @@ services:
     envVars:
       - key: SERVICE_TYPE
         value: api
+      - key: REDIS_URL
+        fromService:
+          name: finance-interceptor-redis
+          type: redis
+          property: connectionString
       - fromGroup: finance-interceptor-secrets
 
   # --- Background Worker (ARQ) ---
@@ -38,6 +43,11 @@ services:
     envVars:
       - key: SERVICE_TYPE
         value: worker
+      - key: REDIS_URL
+        fromService:
+          name: finance-interceptor-redis
+          type: redis
+          property: connectionString
       - fromGroup: finance-interceptor-secrets
 
   # --- Managed Redis (cache + queue + rate limiting) ---
@@ -80,11 +90,6 @@ envVarGroups:
         value: json
       - key: ENVIRONMENT
         value: staging
-      - key: REDIS_URL
-        fromService:
-          name: finance-interceptor-redis
-          type: redis
-          property: connectionString
       - key: TASK_QUEUE_ENABLED
         value: "true"
       - key: TASK_DEBOUNCE_SECONDS
