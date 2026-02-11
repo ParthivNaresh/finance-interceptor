@@ -85,9 +85,21 @@ class Settings(BaseSettings):
 
     app_name: str = "Finance Interceptor"
     app_version: str = "0.1.0"
+    port: int = Field(
+        default=8000,
+        description="Port for the API server (Render injects PORT env var)",
+    )
+    environment: str = Field(
+        default="development",
+        description="Deployment environment (development, staging, production)",
+    )
     debug: bool = Field(
         default=False,
         description="Enable debug mode. Must be False in production.",
+    )
+    sentry_dsn: str = Field(
+        default="",
+        description="Sentry DSN for error monitoring. Empty disables Sentry.",
     )
 
     log_level: LogLevel = Field(

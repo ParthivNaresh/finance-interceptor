@@ -15,6 +15,7 @@ from middleware.exceptions import (
     unhandled_exception_handler,
 )
 from middleware.rate_limit import get_limiter, rate_limit_exceeded_handler
+from middleware.security_headers import SecurityHeadersMiddleware
 from observability import RequestLoggingMiddleware, configure_logging, get_logger
 from repositories.account import AccountRepositoryContainer
 from repositories.alert import AlertRepositoryContainer
@@ -112,6 +113,17 @@ def create_app() -> FastAPI:
             logger.error("application.config_error", error=error)
         raise RuntimeError(f"Production configuration errors: {'; '.join(production_errors)}")
 
+    if settings.sentry_dsn:
+        import sentry_sdk
+
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=settings.environment,
+            release=f"finance-interceptor@{settings.app_version}",
+            traces_sample_rate=0.1,
+        )
+        logger.info("sentry.initialized", environment=settings.environment)
+
     application = FastAPI(
         title="Finance Interceptor API",
         description="Backend API for the Finance Interceptor mobile app",
@@ -129,6 +141,7 @@ def create_app() -> FastAPI:
     application.add_exception_handler(Exception, unhandled_exception_handler)
 
     application.add_middleware(RequestLoggingMiddleware)
+    application.add_middleware(SecurityHeadersMiddleware)
 
     application.add_middleware(
         CORSMiddleware,

@@ -29,6 +29,14 @@ function getSupabaseAnonKey(): string {
   return process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 }
 
+function getPlaidEnvironment(): PlaidEnvironment {
+  const env = process.env.EXPO_PUBLIC_PLAID_ENVIRONMENT;
+  if (env === 'sandbox' || env === 'production') {
+    return env;
+  }
+  return 'sandbox';
+}
+
 function validateConfig(cfg: AppConfig): void {
   if (!cfg.supabaseUrl) {
     throw new Error('EXPO_PUBLIC_SUPABASE_URL is not configured');
@@ -40,7 +48,7 @@ function validateConfig(cfg: AppConfig): void {
 
 export const config: AppConfig = {
   apiBaseUrl: getApiBaseUrl(),
-  plaidEnvironment: 'sandbox',
+  plaidEnvironment: getPlaidEnvironment(),
   appScheme: 'financeinterceptor',
   supabaseUrl: getSupabaseUrl(),
   supabaseAnonKey: getSupabaseAnonKey(),

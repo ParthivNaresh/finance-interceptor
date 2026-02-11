@@ -18,7 +18,20 @@
       "Bash(python -m ruff check:*)",
       "Bash(uv run ruff check:*)",
       "Bash(uv run mypy:*)",
-      "Bash(uv run pytest:*)"
+      "Bash(uv run pytest:*)",
+      "Bash(expo:*)",
+      "Bash(eas:*)",
+      "Bash(chmod:*)",
+      "Bash(just backend-lint:*)",
+      "Bash(just backend-format-check:*)",
+      "Bash(just backend-typecheck:*)",
+      "Bash(just mobile-lint:*)",
+      "Bash(just:*)",
+      "Bash(docker build:*)",
+      "Bash(docker run:*)",
+      "Bash(docker rmi:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker container prune:*)"
     ]
   }
 }

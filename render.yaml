@@ -1,0 +1,49 @@
+# Render Blueprint — defines all infrastructure for Finance Interceptor
+# Deploy: connect repo in Render dashboard → "New Blueprint Instance"
+# Docs: https://docs.render.com/infrastructure-as-code
+
+services:
+  # --- API Server (uvicorn) ---
+  - type: web
+    name: finance-interceptor-api
+    runtime: docker
+    repo: https://github.com/ParthivNaresh/finance-interceptor
+    region: oregon
+    plan: starter
+    branch: main
+    dockerfilePath: apps/backend/Dockerfile
+    dockerContext: apps/backend
+    buildFilter:
+      paths:
+        - apps/backend/**
+    healthCheckPath: /health
+    envVars:
+      - key: SERVICE_TYPE
+        value: api
+      - fromGroup: finance-interceptor-secrets
+
+  # --- Background Worker (ARQ) ---
+  - type: worker
+    name: finance-interceptor-worker
+    runtime: docker
+    repo: https://github.com/ParthivNaresh/finance-interceptor
+    region: oregon
+    plan: starter
+    branch: main
+    dockerfilePath: apps/backend/Dockerfile
+    dockerContext: apps/backend
+    buildFilter:
+      paths:
+        - apps/backend/**
+    envVars:
+      - key: SERVICE_TYPE
+        value: worker
+      - fromGroup: finance-interceptor-secrets
+
+  # --- Managed Redis (cache + queue + rate limiting) ---
+  - type: redis
+    name: finance-interceptor-redis
+    region: oregon
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []  # Only accessible from Render internal network

@@ -18,6 +18,17 @@ async def startup(ctx: dict[str, Any]) -> None:
         service_version=settings.app_version,
     )
 
+    if settings.sentry_dsn:
+        import sentry_sdk
+
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=settings.environment,
+            release=f"finance-interceptor@{settings.app_version}",
+            traces_sample_rate=0.1,
+        )
+        logger.info("sentry.initialized", environment=settings.environment)
+
     logger.info("worker.startup.initializing_services")
 
     from repositories.account import AccountRepositoryContainer
