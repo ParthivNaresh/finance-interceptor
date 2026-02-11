@@ -1,0 +1,104 @@
+# Render Blueprint — defines all infrastructure for Finance Interceptor
+# Deploy: connect repo in Render dashboard → "New Blueprint Instance"
+# Docs: https://docs.render.com/infrastructure-as-code
+
+services:
+  # --- API Server (uvicorn) ---
+  - type: web
+    name: finance-interceptor-api
+    runtime: docker
+    repo: https://github.com/ParthivNaresh/finance-interceptor
+    region: oregon
+    plan: starter
+    branch: main
+    dockerfilePath: apps/backend/Dockerfile
+    dockerContext: apps/backend
+    buildFilter:
+      paths:
+        - apps/backend/**
+    healthCheckPath: /health
+    envVars:
+      - key: SERVICE_TYPE
+        value: api
+      - key: REDIS_URL
+        fromService:
+          name: finance-interceptor-redis
+          type: redis
+          property: connectionString
+      - fromGroup: finance-interceptor-secrets
+
+  # --- Background Worker (ARQ) ---
+  - type: worker
+    name: finance-interceptor-worker
+    runtime: docker
+    repo: https://github.com/ParthivNaresh/finance-interceptor
+    region: oregon
+    plan: starter
+    branch: main
+    dockerfilePath: apps/backend/Dockerfile
+    dockerContext: apps/backend
+    buildFilter:
+      paths:
+        - apps/backend/**
+    envVars:
+      - key: SERVICE_TYPE
+        value: worker
+      - key: REDIS_URL
+        fromService:
+          name: finance-interceptor-redis
+          type: redis
+          property: connectionString
+      - fromGroup: finance-interceptor-secrets
+
+  # --- Managed Redis (cache + queue + rate limiting) ---
+  - type: redis
+    name: finance-interceptor-redis
+    region: oregon
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []  # Only accessible from Render internal network
+
+# --- Shared Environment Group ---
+# Render will prompt you to fill in these values during Blueprint deployment.
+# After deploy, manage them at: Dashboard → Environment Groups → finance-interceptor-secrets
+envVarGroups:
+  - name: finance-interceptor-secrets
+    envVars:
+      - key: PLAID_CLIENT_ID
+        sync: false
+      - key: PLAID_SECRET
+        sync: false
+      - key: PLAID_ENVIRONMENT
+        value: sandbox
+      - key: PLAID_WEBHOOK_URL
+        value: ""
+      - key: PLAID_WEBHOOK_VERIFICATION_ENABLED
+        value: "false"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: LOG_FORMAT
+        value: json
+      - key: ENVIRONMENT
+        value: staging
+      - key: TASK_QUEUE_ENABLED
+        value: "true"
+      - key: TASK_DEBOUNCE_SECONDS
+        value: "30"
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: CACHE_ENABLED
+        value: "true"
+      - key: SENTRY_DSN
+        value: ""
+      - key: CORS_ALLOWED_ORIGINS
+        value: "financeinterceptor://"
