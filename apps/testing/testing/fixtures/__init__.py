@@ -28,6 +28,7 @@ from .behavioral import (
     compute_baselines,
     compute_creep_scores,
     compute_full_analytics_pipeline,
+    lock_baselines,
 )
 from .bundles import (
     add_streaming_bundle,
@@ -87,6 +88,7 @@ __all__ = [
     "compute_baselines",
     "compute_creep_scores",
     "compute_full_analytics_pipeline",
+    "lock_baselines",
     "add_streaming_bundle",
     "add_utilities_bundle",
     "add_fitness_bundle",

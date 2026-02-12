@@ -37,7 +37,11 @@
       "Bash(npx expo install:*)",
       "Bash(npx eslint:*)",
       "Bash(npx tsc:*)",
-      "Bash(.venv/bin/mypy:*)"
+      "Bash(.venv/bin/mypy:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(.venv/bin/python -m pytest tests/test_expected_outcomes.py -k creep_user -v)",
+      "Bash(.venv/bin/ruff format:*)",
+      "Bash(/Users/parthiv.naresh/finance-interceptor/apps/backend/.venv/bin/python -m pytest:*)"
     ]
   }
 }

@@ -248,11 +248,6 @@ class CreepScorer:
                     Decimal("0"), overall_creep_percentage - income_growth_pct
                 ).quantize(Decimal("0.01"))
 
-                # Use income-adjusted creep for overall severity when income data available
-                overall_severity = self._calculate_spend_weighted_severity(
-                    category_summaries, effective_creep_pct=income_adjusted_creep_pct
-                )
-
         discretionary_ratio = self._calculate_discretionary_ratio(total_current, income_for_period)
 
         top_creeping = sorted(
@@ -502,12 +497,7 @@ class CreepScorer:
     def _calculate_spend_weighted_severity(
         self,
         category_summaries: list[CategoryCreepSummary],
-        *,
-        effective_creep_pct: Decimal | None = None,
     ) -> CreepSeverity:
-        if effective_creep_pct is not None:
-            return CreepSeverity.from_percentage(float(effective_creep_pct))
-
         positive = [c for c in category_summaries if c.percentage_change > 0]
         if not positive:
             return CreepSeverity.NONE
@@ -718,8 +708,18 @@ class CreepScorer:
         )
 
         for period in periods:
-            if int(period.get("transaction_count", 0)) > 0:
-                return date.fromisoformat(str(period["period_start"]))
+            if int(period.get("transaction_count", 0)) == 0:
+                continue
+            period_start = date.fromisoformat(str(period["period_start"]))
+            category_spending = self._category_spending_repo.get_by_user_and_period(
+                user_id=user_id,
+                period_type=PeriodType.MONTHLY,
+                period_start=period_start,
+            )
+            if any(
+                SpendingCategory.is_discretionary(r["category_primary"]) for r in category_spending
+            ):
+                return period_start
 
         return None
 
