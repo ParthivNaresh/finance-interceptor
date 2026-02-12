@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from repositories.spending_period import SpendingPeriodRepository
 
 
-MINIMUM_BASELINE_MONTHS = 2
-DEFAULT_BASELINE_MONTHS = 3
+MINIMUM_BASELINE_MONTHS = 3
+ROLLING_BASELINE_MONTHS = 6
 MINIMUM_TRANSACTIONS_PER_CATEGORY = 2
 
 
@@ -41,6 +41,7 @@ class CategoryBaselineData:
     months_with_data: int
     first_period: date
     last_period: date
+    monthly_amounts: list[Decimal] = field(default_factory=list)
 
 
 class BaselineCalculator:
@@ -62,7 +63,7 @@ class BaselineCalculator:
         start_time = time.monotonic()
 
         try:
-            if not force_recompute and self._baseline_repo.has_baselines(user_id):
+            if not force_recompute:
                 locked_baselines = self._baseline_repo.get_by_user_id(user_id, locked_only=True)
                 if locked_baselines:
                     duration_ms = int((time.monotonic() - start_time) * 1000)
@@ -119,6 +120,7 @@ class BaselineCalculator:
                 months_count=months_count,
             )
 
+            self._baseline_repo.delete_unlocked_for_user(user_id)
             if force_recompute:
                 self._baseline_repo.delete_for_user(user_id)
 
@@ -157,21 +159,29 @@ class BaselineCalculator:
             limit=24,
         )
 
-        if len(periods) < MINIMUM_BASELINE_MONTHS:
+        if not periods:
             return None
 
-        sorted_periods = sorted(periods, key=lambda p: p["period_start"])
+        sorted_periods = sorted(periods, key=lambda p: p["period_start"], reverse=True)
 
-        baseline_months = min(DEFAULT_BASELINE_MONTHS, len(sorted_periods))
+        today = date.today()
+        first_of_month = today.replace(day=1)
 
-        baseline_periods = sorted_periods[:baseline_months]
+        completed = [
+            p for p in sorted_periods if date.fromisoformat(str(p["period_start"])) < first_of_month
+        ]
 
-        first_period_start = date.fromisoformat(str(baseline_periods[0]["period_start"]))
-        last_period_start = date.fromisoformat(str(baseline_periods[-1]["period_start"]))
+        if len(completed) < MINIMUM_BASELINE_MONTHS:
+            return None
+
+        baseline_periods = completed[:ROLLING_BASELINE_MONTHS]
+
+        first_period_start = date.fromisoformat(str(baseline_periods[-1]["period_start"]))
+        last_period_start = date.fromisoformat(str(baseline_periods[0]["period_start"]))
 
         _, last_period_end = get_period_bounds(last_period_start, PeriodType.MONTHLY)
 
-        return first_period_start, last_period_end, baseline_months
+        return first_period_start, last_period_end, len(baseline_periods)
 
     def _aggregate_category_spending(
         self,
@@ -203,10 +213,8 @@ class BaselineCalculator:
             if not relevant_records:
                 continue
 
-            total_amount = sum(
-                (Decimal(str(r["total_amount"])) for r in relevant_records),
-                Decimal("0"),
-            )
+            monthly_amounts = [Decimal(str(r["total_amount"])) for r in relevant_records]
+            total_amount = sum(monthly_amounts, Decimal("0"))
             total_transactions = sum(int(r["transaction_count"]) for r in relevant_records)
             months_with_data = len(relevant_records)
 
@@ -222,6 +230,7 @@ class BaselineCalculator:
                     months_with_data=months_with_data,
                     first_period=first_period,
                     last_period=last_period,
+                    monthly_amounts=monthly_amounts,
                 )
             )
 
@@ -250,23 +259,39 @@ class BaselineCalculator:
 
         for data in category_data:
             monthly_average = data.total_amount / data.months_with_data
+            std_dev = self._calculate_std_deviation(data.monthly_amounts)
 
             baselines.append(
                 LifestyleBaselineCreate(
                     user_id=user_id,
                     category_primary=data.category_primary,
-                    baseline_type=BaselineType.ROLLING_3MO,
+                    baseline_type=BaselineType.ROLLING_6MO,
                     baseline_monthly_amount=monthly_average.quantize(Decimal("0.01")),
                     baseline_transaction_count=data.total_transactions,
                     baseline_period_start=period_start,
                     baseline_period_end=period_end,
                     baseline_months_count=months_count,
+                    baseline_std_deviation=std_dev,
                     seasonal_adjustment_factor=None,
                     is_locked=False,
                 )
             )
 
         return baselines
+
+    @staticmethod
+    def _calculate_std_deviation(amounts: list[Decimal]) -> Decimal | None:
+        if len(amounts) < 3:
+            return None
+
+        n = Decimal(len(amounts))
+        mean = sum(amounts, Decimal("0")) / n
+        variance = sum((x - mean) ** 2 for x in amounts) / n
+
+        if variance == 0:
+            return Decimal("0")
+
+        return variance.sqrt().quantize(Decimal("0.01"))
 
     def lock_baselines(self, user_id: UUID) -> int:
         return self._baseline_repo.lock_baselines(user_id)
@@ -304,9 +329,6 @@ class BaselineCalculator:
         )
 
     def should_compute_baselines(self, user_id: UUID) -> bool:
-        if self._baseline_repo.has_baselines(user_id):
-            return False
-
         periods = self._spending_period_repo.get_periods_for_user(
             user_id=user_id,
             period_type=PeriodType.MONTHLY,

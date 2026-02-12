@@ -87,6 +87,17 @@ def compute_baselines(
     )
 
 
+def lock_baselines(context: TestContext) -> int:
+    """Lock all baselines for the user, preventing rolling recomputation."""
+    if context.user is None:
+        raise ValueError("Context must have a user")
+
+    from services.analytics import get_baseline_calculator
+
+    calculator = get_baseline_calculator()
+    return calculator.lock_baselines(context.user_id)
+
+
 def compute_creep_scores(
     context: TestContext,
 ) -> CreepScoreComputationResult:

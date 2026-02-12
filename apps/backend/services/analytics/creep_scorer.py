@@ -36,6 +36,23 @@ CREEP_SCORE_SCALE_FACTOR = Decimal("10")
 MAX_CREEP_SCORE = Decimal("100")
 MIN_CREEP_SCORE = Decimal("-100")
 
+# Statistical z-score thresholds
+Z_THRESHOLD_LOW = Decimal("1.0")
+Z_THRESHOLD_MEDIUM = Decimal("1.5")
+Z_THRESHOLD_HIGH = Decimal("2.0")
+
+# Fallback percentage thresholds (relaxed vs original 10/25/50)
+FALLBACK_PCT_LOW = 15.0
+FALLBACK_PCT_MEDIUM = 35.0
+FALLBACK_PCT_HIGH = 60.0
+
+# Trend detection constants
+TREND_LOOKBACK = 4
+TREND_ELEVATED_MINIMUM = 3
+
+# Spend-weighted severity: sustained categories get 1.5x weight
+SUSTAINED_WEIGHT_MULTIPLIER = Decimal("1.5")
+
 
 @dataclass
 class CreepComputationTotals:
@@ -147,9 +164,17 @@ class CreepScorer:
         cash_flow = self._cash_flow_repo.get_by_user_and_period(user_id, period_start)
         income_for_period = Decimal(str(cash_flow["total_income"])) if cash_flow else None
 
+        # Batch-fetch trend data (1 query for all categories)
+        trend_data = self._creep_score_repo.get_recent_scores_by_category(user_id, TREND_LOOKBACK)
+
+        # Build std_dev map for statistical severity
+        baselines = self._baseline_repo.get_by_user_id(user_id)
+        std_dev_map = self._build_std_dev_map(baselines)
+
         total_baseline = Decimal("0")
         total_current = Decimal("0")
         category_summaries: list[CategoryCreepSummary] = []
+        sustained_count = 0
 
         for score in scores:
             category = score["category_primary"]
@@ -161,10 +186,28 @@ class CreepScorer:
             total_baseline += baseline_amount
             total_current += current_amount
 
-            seasonality = detect_seasonality(category, period_start)
-            severity = self._calculate_severity_with_seasonality(
-                percentage_change, seasonality.is_seasonal
+            std_dev = std_dev_map.get(category)
+
+            # Improvement 3: Statistical severity
+            severity = self._calculate_statistical_severity(
+                current_amount, baseline_amount, std_dev
             )
+
+            # Seasonality downgrade
+            seasonality = detect_seasonality(category, period_start)
+            severity = self._downgrade_severity_for_seasonality(severity, seasonality.is_seasonal)
+
+            # Improvement 3: z-score for transparency
+            z_score = self._calculate_z_score(current_amount, baseline_amount, std_dev)
+
+            # Improvement 2: Trend detection
+            category_scores = trend_data.get(category, [])
+            trend_direction, consecutive = self._detect_category_trend(
+                category_scores, baseline_amount, std_dev
+            )
+
+            if trend_direction == "sustained_increase":
+                sustained_count += 1
 
             category_summaries.append(
                 CategoryCreepSummary(
@@ -178,6 +221,9 @@ class CreepScorer:
                     seasonal_months=list(seasonality.seasonal_months)
                     if seasonality.seasonal_months
                     else None,
+                    trend_direction=trend_direction,
+                    consecutive_months_elevated=consecutive,
+                    z_score=z_score,
                 )
             )
 
@@ -185,7 +231,22 @@ class CreepScorer:
             total_baseline, total_current
         )
 
-        overall_severity = self._calculate_overall_severity(category_summaries)
+        # Improvement 4: Spend-weighted overall severity
+        overall_severity = self._calculate_spend_weighted_severity(category_summaries)
+
+        # Improvement 5: Income correlation
+        income_growth_pct: Decimal | None = None
+        income_adjusted_creep_pct: Decimal | None = None
+
+        if income_for_period is not None and income_for_period > 0:
+            baseline_income = self._calculate_baseline_income(user_id, baselines)
+            if baseline_income is not None and baseline_income > 0:
+                income_growth_pct = (
+                    (income_for_period - baseline_income) / baseline_income * 100
+                ).quantize(Decimal("0.01"))
+                income_adjusted_creep_pct = max(
+                    Decimal("0"), overall_creep_percentage - income_growth_pct
+                ).quantize(Decimal("0.01"))
 
         discretionary_ratio = self._calculate_discretionary_ratio(total_current, income_for_period)
 
@@ -208,6 +269,9 @@ class CreepScorer:
             overall_severity=overall_severity,
             discretionary_ratio=discretionary_ratio,
             income_for_period=income_for_period,
+            categories_with_sustained_creep=sustained_count,
+            income_growth_percentage=income_growth_pct,
+            income_adjusted_creep_percentage=income_adjusted_creep_pct,
             top_creeping_categories=top_creeping,
             improving_categories=improving,
         )
@@ -239,6 +303,12 @@ class CreepScorer:
             limit=periods,
         )
 
+        # Fetch baseline for std_dev
+        baseline = self._baseline_repo.get_by_category(user_id, category_primary)
+        std_dev: Decimal | None = None
+        if baseline and baseline.get("baseline_std_deviation") is not None:
+            std_dev = Decimal(str(baseline["baseline_std_deviation"]))
+
         return [
             CategoryCreepSummary(
                 category_primary=score["category_primary"],
@@ -246,7 +316,11 @@ class CreepScorer:
                 current_amount=Decimal(str(score["current_amount"])),
                 absolute_change=Decimal(str(score["absolute_change"])),
                 percentage_change=Decimal(str(score["percentage_change"])),
-                severity=CreepSeverity.from_percentage(float(score["percentage_change"])),
+                severity=self._calculate_statistical_severity(
+                    Decimal(str(score["current_amount"])),
+                    Decimal(str(score["baseline_amount"])),
+                    std_dev,
+                ),
             )
             for score in scores
         ]
@@ -328,6 +402,177 @@ class CreepScorer:
             overall_severity=overall_severity,
             top_drifting_category=top_drifting_category,
         )
+
+    # -------------------------------------------------------------------------
+    # Improvement 3: Statistical severity using z-scores
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _calculate_statistical_severity(
+        current: Decimal,
+        baseline: Decimal,
+        std_dev: Decimal | None,
+    ) -> CreepSeverity:
+        if current <= baseline or baseline == 0:
+            return CreepSeverity.NONE
+
+        if std_dev is None or std_dev == 0:
+            pct = float(((current - baseline) / baseline) * 100)
+            thresholds = [
+                (FALLBACK_PCT_HIGH, CreepSeverity.HIGH),
+                (FALLBACK_PCT_MEDIUM, CreepSeverity.MEDIUM),
+                (FALLBACK_PCT_LOW, CreepSeverity.LOW),
+            ]
+        else:
+            z = (current - baseline) / std_dev
+            pct = float(z)
+            thresholds = [
+                (float(Z_THRESHOLD_HIGH), CreepSeverity.HIGH),
+                (float(Z_THRESHOLD_MEDIUM), CreepSeverity.MEDIUM),
+                (float(Z_THRESHOLD_LOW), CreepSeverity.LOW),
+            ]
+
+        for threshold, severity in thresholds:
+            if pct >= threshold:
+                return severity
+        return CreepSeverity.NONE
+
+    @staticmethod
+    def _calculate_z_score(
+        current: Decimal,
+        baseline: Decimal,
+        std_dev: Decimal | None,
+    ) -> Decimal | None:
+        if std_dev is None or std_dev == 0 or baseline == 0:
+            return None
+        return ((current - baseline) / std_dev).quantize(Decimal("0.01"))
+
+    # -------------------------------------------------------------------------
+    # Improvement 2: Trend detection
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _detect_category_trend(
+        category_scores: list[dict[str, Any]],
+        baseline_amount: Decimal,
+        std_dev: Decimal | None,
+    ) -> tuple[str | None, int]:
+        """Detect whether a category has sustained, fluctuating, or declining spend.
+
+        Returns (direction, consecutive_months_elevated).
+        """
+        if len(category_scores) < 2:
+            return ("new", 0) if len(category_scores) < 2 else (None, 0)
+
+        # Define "elevated" threshold
+        if std_dev is not None and std_dev > 0:
+            threshold = baseline_amount + std_dev * Decimal("0.5")
+        elif baseline_amount > 0:
+            threshold = baseline_amount * Decimal("1.15")
+        else:
+            return (None, 0)
+
+        # Count elevated months in last TREND_LOOKBACK periods
+        elevated_count = 0
+        below_baseline_count = 0
+        for score in category_scores[:TREND_LOOKBACK]:
+            current_amount = Decimal(str(score["current_amount"]))
+            if current_amount > threshold:
+                elevated_count += 1
+            if current_amount < baseline_amount:
+                below_baseline_count += 1
+
+        total_checked = min(len(category_scores), TREND_LOOKBACK)
+
+        if elevated_count >= TREND_ELEVATED_MINIMUM:
+            return ("sustained_increase", elevated_count)
+        if below_baseline_count == total_checked:
+            return ("sustained_decrease", 0)
+        return ("fluctuating", elevated_count)
+
+    # -------------------------------------------------------------------------
+    # Improvement 4: Spend-weighted overall severity
+    # -------------------------------------------------------------------------
+
+    def _calculate_spend_weighted_severity(
+        self,
+        category_summaries: list[CategoryCreepSummary],
+    ) -> CreepSeverity:
+        positive = [c for c in category_summaries if c.percentage_change > 0]
+        if not positive:
+            return CreepSeverity.NONE
+
+        total_weight = Decimal("0")
+        weighted_sum = Decimal("0")
+
+        for cat in positive:
+            weight = cat.baseline_amount
+            if cat.trend_direction == "sustained_increase":
+                weight = weight * SUSTAINED_WEIGHT_MULTIPLIER
+            weighted_sum += cat.percentage_change * weight
+            total_weight += weight
+
+        if total_weight == 0:
+            return CreepSeverity.NONE
+
+        weighted_avg = weighted_sum / total_weight
+        return CreepSeverity.from_percentage(float(weighted_avg))
+
+    # -------------------------------------------------------------------------
+    # Improvement 5: Income correlation
+    # -------------------------------------------------------------------------
+
+    def _calculate_baseline_income(
+        self,
+        user_id: UUID,
+        baselines: list[dict[str, Any]],
+    ) -> Decimal | None:
+        if not baselines:
+            return None
+
+        baseline_start_str = baselines[0].get("baseline_period_start")
+        baseline_end_str = baselines[0].get("baseline_period_end")
+        if not baseline_start_str or not baseline_end_str:
+            return None
+
+        baseline_start = date.fromisoformat(str(baseline_start_str))
+        baseline_end = date.fromisoformat(str(baseline_end_str))
+
+        cash_flow_periods = self._cash_flow_repo.get_periods_in_range(
+            user_id, baseline_start, baseline_end
+        )
+
+        if not cash_flow_periods:
+            return None
+
+        total_income = sum(
+            (Decimal(str(p["total_income"])) for p in cash_flow_periods),
+            Decimal("0"),
+        )
+        return (total_income / Decimal(len(cash_flow_periods))).quantize(Decimal("0.01"))
+
+    # -------------------------------------------------------------------------
+    # Seasonality
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _downgrade_severity_for_seasonality(
+        severity: CreepSeverity,
+        is_seasonal: bool,
+    ) -> CreepSeverity:
+        if not is_seasonal:
+            return severity
+
+        if severity == CreepSeverity.HIGH:
+            return CreepSeverity.MEDIUM
+        if severity == CreepSeverity.MEDIUM:
+            return CreepSeverity.LOW
+
+        return severity
+
+    # -------------------------------------------------------------------------
+    # Internal helpers
+    # -------------------------------------------------------------------------
 
     def _get_current_discretionary_spend(
         self,
@@ -432,6 +677,17 @@ class CreepScorer:
             b["category_primary"]: Decimal(str(b["baseline_monthly_amount"])) for b in baselines
         }
 
+    @staticmethod
+    def _build_std_dev_map(baselines: list[dict[str, Any]]) -> dict[str, Decimal | None]:
+        result: dict[str, Decimal | None] = {}
+        for b in baselines:
+            std_dev_val = b.get("baseline_std_deviation")
+            if std_dev_val is not None:
+                result[b["category_primary"]] = Decimal(str(std_dev_val))
+            else:
+                result[b["category_primary"]] = None
+        return result
+
     def _get_periods_to_compute(self, user_id: UUID, count: int) -> list[date]:
         current = self._get_latest_period_start_with_transactions(user_id)
         if current is None:
@@ -452,13 +708,17 @@ class CreepScorer:
         )
 
         for period in periods:
+            if int(period.get("transaction_count", 0)) == 0:
+                continue
             period_start = date.fromisoformat(str(period["period_start"]))
-            current_spending = self._category_spending_repo.get_by_user_and_period(
+            category_spending = self._category_spending_repo.get_by_user_and_period(
                 user_id=user_id,
                 period_type=PeriodType.MONTHLY,
                 period_start=period_start,
             )
-            if current_spending:
+            if any(
+                SpendingCategory.is_discretionary(r["category_primary"]) for r in category_spending
+            ):
                 return period_start
 
         return None
@@ -494,20 +754,6 @@ class CreepScorer:
         change = ((total_current - total_baseline) / total_baseline) * 100
         return change.quantize(Decimal("0.01"))
 
-    def _calculate_overall_severity(
-        self,
-        category_summaries: list[CategoryCreepSummary],
-    ) -> CreepSeverity:
-        positive = [c for c in category_summaries if c.percentage_change > 0]
-        if not positive:
-            return CreepSeverity.NONE
-
-        positive.sort(key=lambda c: c.percentage_change, reverse=True)
-        top = positive[:2]
-
-        avg_change = sum((c.percentage_change for c in top), Decimal("0")) / Decimal(len(top))
-        return CreepSeverity.from_percentage(float(avg_change))
-
     def _calculate_discretionary_ratio(
         self,
         total_discretionary: Decimal,
@@ -518,23 +764,6 @@ class CreepScorer:
 
         ratio = total_discretionary / income
         return ratio.quantize(Decimal("0.0001"))
-
-    def _calculate_severity_with_seasonality(
-        self,
-        percentage_change: Decimal,
-        is_seasonal: bool,
-    ) -> CreepSeverity:
-        base_severity = CreepSeverity.from_percentage(float(percentage_change))
-
-        if not is_seasonal:
-            return base_severity
-
-        if base_severity == CreepSeverity.HIGH:
-            return CreepSeverity.MEDIUM
-        if base_severity == CreepSeverity.MEDIUM:
-            return CreepSeverity.LOW
-
-        return base_severity
 
 
 class CreepScorerContainer:

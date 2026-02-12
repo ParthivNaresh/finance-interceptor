@@ -133,23 +133,22 @@ def _execute_analytics(
         errors.append("Cash flow computation failed")
         log.warning("task.analytics.cash_flow_failed", error=str(e))
 
-    if worker_context.baseline_calculator.should_compute_baselines(user_id):
-        try:
-            baseline_result = worker_context.baseline_calculator.compute_baselines_for_user(
-                user_id, force_recompute=False
+    try:
+        baseline_result = worker_context.baseline_calculator.compute_baselines_for_user(
+            user_id, force_recompute=False
+        )
+        baselines_computed = baseline_result.baselines_computed
+        if baselines_computed > 0:
+            target_auto_established = True
+            log.info(
+                "task.analytics.target_auto_established",
+                baselines_computed=baselines_computed,
+                period_start=str(baseline_result.baseline_period_start),
+                period_end=str(baseline_result.baseline_period_end),
             )
-            baselines_computed = baseline_result.baselines_computed
-            if baselines_computed > 0:
-                target_auto_established = True
-                log.info(
-                    "task.analytics.target_auto_established",
-                    baselines_computed=baselines_computed,
-                    period_start=str(baseline_result.baseline_period_start),
-                    period_end=str(baseline_result.baseline_period_end),
-                )
-        except Exception as e:
-            errors.append("Baseline computation failed")
-            log.warning("task.analytics.baseline_failed", error=str(e))
+    except Exception as e:
+        errors.append("Baseline computation failed")
+        log.warning("task.analytics.baseline_failed", error=str(e))
 
     baseline_status = worker_context.baseline_calculator.get_baseline_status(user_id)
     if baseline_status.has_baselines:

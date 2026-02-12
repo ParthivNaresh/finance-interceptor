@@ -9,6 +9,7 @@ from ..behavioral.analytics import (
     compute_analytics,
     compute_baselines,
     compute_creep_scores,
+    lock_baselines,
 )
 from ..behavioral.income import add_salary_income
 from ..behavioral.spending import add_gradual_increase, add_stable_spending
@@ -90,30 +91,66 @@ def lifestyle_creep_gradual(
 
     scale = baseline_discretionary / Decimal("1200.00")
 
+    # ── Phase 1: Seed baseline-period spending only ──
+    # Stable categories: baseline months at base amounts
     for i, (category, base_amount) in enumerate(stable_categories):
         scaled_amount = base_amount * scale
         add_stable_spending(
             context,
             category_primary=category,
-            months=total_months,
+            months=baseline_months,
             monthly_amount=scaled_amount,
             start_months_ago=total_months,
             seed=seed + i * 100 if seed else None,
         )
 
+    # All creeping categories at base amounts for baseline months
+    for i, (category, base_amount) in enumerate(creeping_categories):
+        scaled_amount = base_amount * scale
+        add_stable_spending(
+            context,
+            category_primary=category,
+            months=baseline_months,
+            monthly_amount=scaled_amount,
+            start_months_ago=total_months,
+            seed=seed + (i + 10) * 100 if seed else None,
+        )
+
+    # Subscriptions span all months (non-discretionary, won't affect baselines)
+    if include_subscriptions:
+        add_common_subscriptions_bundle(
+            context,
+            months=total_months,
+            include_streaming=True,
+            include_utilities=True,
+            seed=seed,
+        )
+
+    # Compute analytics and baselines from stable-only data
+    compute_analytics(context)
+    baseline_result = compute_baselines(context)
+
+    # Lock baselines to prevent rolling recomputation from absorbing creep
+    if baseline_result.success:
+        lock_baselines(context)
+
+    # ── Phase 2: Seed creep-period spending ──
+    # Stable categories: remaining months at same amounts
+    for i, (category, base_amount) in enumerate(stable_categories):
+        scaled_amount = base_amount * scale
+        add_stable_spending(
+            context,
+            category_primary=category,
+            months=creep_months,
+            monthly_amount=scaled_amount,
+            seed=seed + (i + 30) * 100 if seed else None,
+        )
+
+    # Creeping categories: gradual increase or stable for remaining months
     for i, (category, base_amount) in enumerate(creeping_categories):
         scaled_amount = base_amount * scale
 
         if category in target_creep_categories:
-            add_stable_spending(
-                context,
-                category_primary=category,
-                months=baseline_months,
-                monthly_amount=scaled_amount,
-                start_months_ago=total_months,
-                seed=seed + (i + 10) * 100 if seed else None,
-            )
-
             end_amount = scaled_amount * Decimal(str(1 + creep_percentage))
             add_gradual_increase(
                 context,
@@ -127,23 +164,13 @@ def lifestyle_creep_gradual(
             add_stable_spending(
                 context,
                 category_primary=category,
-                months=total_months,
+                months=creep_months,
                 monthly_amount=scaled_amount,
-                start_months_ago=total_months,
-                seed=seed + (i + 10) * 100 if seed else None,
+                seed=seed + (i + 40) * 100 if seed else None,
             )
 
-    if include_subscriptions:
-        add_common_subscriptions_bundle(
-            context,
-            months=total_months,
-            include_streaming=True,
-            include_utilities=True,
-            seed=seed,
-        )
-
+    # Recompute analytics with all data, then score creep against locked baselines
     analytics_result = compute_analytics(context)
-    baseline_result = compute_baselines(context)
 
     creep_result = None
     if baseline_result.success:
@@ -244,9 +271,9 @@ def lifestyle_creep_severe(
 
     scale = baseline_discretionary / Decimal("1200.00")
 
+    # ── Phase 1: Seed baseline-period spending only ──
     for i, (category, base_amount) in enumerate(all_categories):
         scaled_amount = base_amount * scale
-
         add_stable_spending(
             context,
             category_primary=category,
@@ -254,16 +281,6 @@ def lifestyle_creep_severe(
             monthly_amount=scaled_amount,
             start_months_ago=total_months,
             seed=seed + i * 100 if seed else None,
-        )
-
-        end_amount = scaled_amount * Decimal(str(1 + creep_percentage))
-        add_gradual_increase(
-            context,
-            category_primary=category,
-            months=creep_months,
-            start_monthly_amount=scaled_amount,
-            end_monthly_amount=end_amount,
-            seed=seed + (i + 10) * 100 if seed else None,
         )
 
     if include_subscriptions:
@@ -275,8 +292,29 @@ def lifestyle_creep_severe(
             seed=seed,
         )
 
-    analytics_result = compute_analytics(context)
+    # Compute analytics and baselines from stable-only data
+    compute_analytics(context)
     baseline_result = compute_baselines(context)
+
+    # Lock baselines to prevent rolling recomputation from absorbing creep
+    if baseline_result.success:
+        lock_baselines(context)
+
+    # ── Phase 2: Seed creep-period spending ──
+    for i, (category, base_amount) in enumerate(all_categories):
+        scaled_amount = base_amount * scale
+        end_amount = scaled_amount * Decimal(str(1 + creep_percentage))
+        add_gradual_increase(
+            context,
+            category_primary=category,
+            months=creep_months,
+            start_monthly_amount=scaled_amount,
+            end_monthly_amount=end_amount,
+            seed=seed + (i + 10) * 100 if seed else None,
+        )
+
+    # Recompute analytics with all data, then score creep against locked baselines
+    analytics_result = compute_analytics(context)
 
     creep_result = None
     if baseline_result.success:
