@@ -83,6 +83,7 @@ class PeriodType(StrEnum):
 
 class BaselineType(StrEnum):
     ROLLING_3MO = "rolling_3mo"
+    ROLLING_6MO = "rolling_6mo"
     ROLLING_12MO = "rolling_12mo"
     SEASONAL = "seasonal"
 

@@ -443,12 +443,13 @@ class CashFlowComputationResultResponse(BaseModel):
 
 class LifestyleBaselineBase(BaseModel):
     category_primary: str
-    baseline_type: BaselineType = BaselineType.ROLLING_3MO
+    baseline_type: BaselineType = BaselineType.ROLLING_6MO
     baseline_monthly_amount: Decimal
     baseline_transaction_count: int
     baseline_period_start: date
     baseline_period_end: date
     baseline_months_count: int
+    baseline_std_deviation: Decimal | None = None
     seasonal_adjustment_factor: Decimal | None = None
     is_locked: bool = False
 
@@ -463,6 +464,7 @@ class LifestyleBaselineUpdate(BaseModel):
     baseline_period_start: date | None = None
     baseline_period_end: date | None = None
     baseline_months_count: int | None = None
+    baseline_std_deviation: Decimal | None = None
     seasonal_adjustment_factor: Decimal | None = None
     is_locked: bool | None = None
 
@@ -479,6 +481,7 @@ class LifestyleBaselineResponse(BaseModel):
     baseline_period_start: date
     baseline_period_end: date
     baseline_months_count: int
+    baseline_std_deviation: Decimal | None = None
     seasonal_adjustment_factor: Decimal | None
     is_locked: bool
     created_at: datetime
@@ -541,6 +544,9 @@ class CategoryCreepSummary(BaseModel):
     severity: CreepSeverity
     is_seasonal: bool = False
     seasonal_months: list[int] | None = None
+    trend_direction: str | None = None
+    consecutive_months_elevated: int = 0
+    z_score: Decimal | None = None
 
 
 class LifestyleCreepSummary(BaseModel):
@@ -551,6 +557,9 @@ class LifestyleCreepSummary(BaseModel):
     overall_severity: CreepSeverity
     discretionary_ratio: Decimal | None = None
     income_for_period: Decimal | None = None
+    categories_with_sustained_creep: int = 0
+    income_growth_percentage: Decimal | None = None
+    income_adjusted_creep_percentage: Decimal | None = None
     top_creeping_categories: list[CategoryCreepSummary] = Field(default_factory=list)
     improving_categories: list[CategoryCreepSummary] = Field(default_factory=list)
 

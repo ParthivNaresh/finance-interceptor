@@ -286,6 +286,7 @@ export interface LifestyleBaseline {
   baseline_period_start: string;
   baseline_period_end: string;
   baseline_months_count: number;
+  baseline_std_deviation: string | null;
   seasonal_adjustment_factor: string | null;
   is_locked: boolean;
   created_at: string;
@@ -307,6 +308,9 @@ export interface CategoryCreepSummary {
   severity: CreepSeverity;
   is_seasonal: boolean;
   seasonal_months: number[] | null;
+  trend_direction: string | null;
+  consecutive_months_elevated: number;
+  z_score: string | null;
 }
 
 export interface LifestyleCreepSummary {
@@ -317,6 +321,9 @@ export interface LifestyleCreepSummary {
   overall_severity: CreepSeverity;
   discretionary_ratio: string | null;
   income_for_period: string | null;
+  categories_with_sustained_creep: number;
+  income_growth_percentage: string | null;
+  income_adjusted_creep_percentage: string | null;
   top_creeping_categories: CategoryCreepSummary[];
   improving_categories: CategoryCreepSummary[];
 }

@@ -58,7 +58,7 @@ CREATE TYPE user_action_type AS ENUM (
 
 CREATE TYPE period_type AS ENUM ('daily', 'weekly', 'monthly', 'yearly');
 
-CREATE TYPE baseline_type AS ENUM ('rolling_3mo', 'rolling_12mo', 'seasonal');
+CREATE TYPE baseline_type AS ENUM ('rolling_3mo', 'rolling_6mo', 'rolling_12mo', 'seasonal');
 
 CREATE TYPE anomaly_type AS ENUM (
     'large_amount',
@@ -491,7 +491,8 @@ CREATE TABLE public.lifestyle_baselines (
     baseline_period_start DATE NOT NULL,
     baseline_period_end DATE NOT NULL,
     baseline_months_count INTEGER NOT NULL,
-    
+    baseline_std_deviation DECIMAL(19, 4),
+
     seasonal_adjustment_factor DECIMAL(5, 4),
     is_locked BOOLEAN NOT NULL DEFAULT FALSE,
     

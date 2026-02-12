@@ -94,6 +94,37 @@ class LifestyleCreepScoreRepository(
         )
         return [dict(item) for item in result.data] if result.data else []
 
+    def get_recent_scores_by_category(
+        self,
+        user_id: UUID,
+        lookback_periods: int = 4,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Fetch last N periods of scores for ALL categories in a single query.
+
+        Returns {category_primary: [scores newest-first]}.
+        """
+        result = (
+            self._get_table()
+            .select("*")
+            .eq("user_id", str(user_id))
+            .order("period_start", desc=True)
+            .limit(lookback_periods * 10)
+            .execute()
+        )
+
+        if not result.data:
+            return {}
+
+        by_category: dict[str, list[dict[str, Any]]] = {}
+        for item in result.data:
+            cat = item["category_primary"]
+            if cat not in by_category:
+                by_category[cat] = []
+            if len(by_category[cat]) < lookback_periods:
+                by_category[cat].append(dict(item))
+
+        return by_category
+
     def get_top_creeping_categories(
         self,
         user_id: UUID,

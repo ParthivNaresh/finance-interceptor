@@ -343,18 +343,17 @@ def _run_analytics_sync(
     except Exception:
         log.warning("task.webhook.analytics.cash_flow_failed")
 
-    if worker_context.baseline_calculator.should_compute_baselines(user_id):
-        try:
-            baseline_result = worker_context.baseline_calculator.compute_baselines_for_user(
-                user_id, force_recompute=False
+    try:
+        baseline_result = worker_context.baseline_calculator.compute_baselines_for_user(
+            user_id, force_recompute=False
+        )
+        if baseline_result.baselines_computed > 0:
+            log.info(
+                "task.webhook.analytics.target_auto_established",
+                baselines_computed=baseline_result.baselines_computed,
             )
-            if baseline_result.baselines_computed > 0:
-                log.info(
-                    "task.webhook.analytics.target_auto_established",
-                    baselines_computed=baseline_result.baselines_computed,
-                )
-        except Exception:
-            log.warning("task.webhook.analytics.baseline_failed")
+    except Exception:
+        log.warning("task.webhook.analytics.baseline_failed")
 
     baseline_status = worker_context.baseline_calculator.get_baseline_status(user_id)
     if baseline_status.has_baselines:
