@@ -168,9 +168,7 @@ class BaselineCalculator:
         first_of_month = today.replace(day=1)
 
         completed = [
-            p
-            for p in sorted_periods
-            if date.fromisoformat(str(p["period_start"])) < first_of_month
+            p for p in sorted_periods if date.fromisoformat(str(p["period_start"])) < first_of_month
         ]
 
         if len(completed) < MINIMUM_BASELINE_MONTHS:

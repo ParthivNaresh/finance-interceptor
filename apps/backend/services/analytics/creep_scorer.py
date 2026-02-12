@@ -165,9 +165,7 @@ class CreepScorer:
         income_for_period = Decimal(str(cash_flow["total_income"])) if cash_flow else None
 
         # Batch-fetch trend data (1 query for all categories)
-        trend_data = self._creep_score_repo.get_recent_scores_by_category(
-            user_id, TREND_LOOKBACK
-        )
+        trend_data = self._creep_score_repo.get_recent_scores_by_category(user_id, TREND_LOOKBACK)
 
         # Build std_dev map for statistical severity
         baselines = self._baseline_repo.get_by_user_id(user_id)
