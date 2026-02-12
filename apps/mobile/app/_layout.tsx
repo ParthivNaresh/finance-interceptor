@@ -1,12 +1,14 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
+import * as Sentry from '@sentry/react-native';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useNavigationContainerRef, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
+import { config } from '@/config';
 import { AuthProvider } from '@/contexts';
 import { useAuth } from '@/hooks';
 import '@/i18n';
@@ -15,6 +17,18 @@ import { colors } from '@/styles';
 import SpaceMonoFont from '../assets/fonts/SpaceMono-Regular.ttf';
 
 export { ErrorBoundary } from 'expo-router';
+
+const routingInstrumentation = Sentry.reactNavigationIntegration({
+  enableTimeToInitialDisplay: true,
+});
+
+Sentry.init({
+  dsn: config.sentryDsn,
+  enabled: !!config.sentryDsn,
+  environment: __DEV__ ? 'development' : 'production',
+  tracesSampleRate: 0.2,
+  integrations: [routingInstrumentation],
+});
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -31,12 +45,20 @@ const customDarkTheme = {
   },
 };
 
-export default function RootLayout() {
+function RootLayout() {
+  const ref = useNavigationContainerRef();
+
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const [loaded, fontError] = useFonts({
     SpaceMono: SpaceMonoFont,
     ...FontAwesome.font,
   });
+
+  useEffect(() => {
+    if (ref?.current) {
+      routingInstrumentation.registerNavigationContainer(ref);
+    }
+  }, [ref]);
 
   useEffect(() => {
     if (fontError) {
@@ -60,6 +82,8 @@ export default function RootLayout() {
     </AuthProvider>
   );
 }
+
+export default Sentry.wrap(RootLayout);
 
 function RootLayoutNav() {
   const { isAuthenticated, isLoading } = useAuth();

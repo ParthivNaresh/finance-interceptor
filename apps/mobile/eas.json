@@ -9,21 +9,24 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://finance-interceptor-api.onrender.com",
-        "EXPO_PUBLIC_PLAID_ENVIRONMENT": "sandbox"
+        "EXPO_PUBLIC_PLAID_ENVIRONMENT": "sandbox",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://fa498384dc0391b300140732762f9300@o4510868603731968.ingest.us.sentry.io/4510868606550016"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://finance-interceptor-api.onrender.com",
-        "EXPO_PUBLIC_PLAID_ENVIRONMENT": "sandbox"
+        "EXPO_PUBLIC_PLAID_ENVIRONMENT": "sandbox",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://fa498384dc0391b300140732762f9300@o4510868603731968.ingest.us.sentry.io/4510868606550016"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.financeinterceptor.com",
-        "EXPO_PUBLIC_PLAID_ENVIRONMENT": "production"
+        "EXPO_PUBLIC_PLAID_ENVIRONMENT": "production",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://fa498384dc0391b300140732762f9300@o4510868603731968.ingest.us.sentry.io/4510868606550016"
       }
     }
   },

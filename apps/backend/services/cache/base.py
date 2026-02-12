@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import contextlib
-from typing import ClassVar
+from collections import defaultdict
+from typing import Any, ClassVar
 
 from redis import Redis
 from redis.exceptions import RedisError
@@ -19,6 +20,7 @@ class CacheService:
         self._settings = settings
         self._client: Redis | None = None
         self._enabled = settings.cache_enabled
+        self._stats: dict[str, dict[str, int]] = defaultdict(lambda: {"hits": 0, "misses": 0})
 
     def _get_client(self) -> Redis:
         if self._client is None:
@@ -33,28 +35,62 @@ class CacheService:
     def _build_key(self, *parts: str) -> str:
         return f"{self._KEY_PREFIX}:{':'.join(parts)}"
 
+    @staticmethod
+    def _extract_domain(key: str) -> str:
+        parts = key.split(":")
+        if len(parts) >= 2 and parts[0] == "fi":
+            return parts[1]
+        return "unknown"
+
     def get(self, key: str) -> bytes | None:
         if not self._enabled:
             return None
+
+        domain = self._extract_domain(key)
 
         try:
             client = self._get_client()
             raw_data = client.get(key)
 
             if raw_data is None:
+                self._stats[domain]["misses"] += 1
                 logger.debug("cache.miss", key=key)
                 return None
 
             if not isinstance(raw_data, bytes):
+                self._stats[domain]["misses"] += 1
                 logger.warning("cache.unexpected_type", key=key, data_type=type(raw_data).__name__)
                 return None
 
+            self._stats[domain]["hits"] += 1
             logger.debug("cache.hit", key=key)
             return raw_data
 
         except RedisError as e:
+            self._stats[domain]["misses"] += 1
             logger.warning("cache.get_failed", key=key, error=str(e))
             return None
+
+    def get_stats(self) -> dict[str, Any]:
+        total_hits = sum(d["hits"] for d in self._stats.values())
+        total_misses = sum(d["misses"] for d in self._stats.values())
+        total = total_hits + total_misses
+
+        domains: dict[str, dict[str, Any]] = {}
+        for domain, counts in sorted(self._stats.items()):
+            domain_total = counts["hits"] + counts["misses"]
+            domains[domain] = {
+                "hits": counts["hits"],
+                "misses": counts["misses"],
+                "hit_rate": round(counts["hits"] / domain_total, 4) if domain_total > 0 else 0.0,
+            }
+
+        return {
+            "total_hits": total_hits,
+            "total_misses": total_misses,
+            "hit_rate": round(total_hits / total, 4) if total > 0 else 0.0,
+            "domains": domains,
+        }
 
     def set(self, key: str, value: bytes, ttl: int) -> bool:
         if not self._enabled:
